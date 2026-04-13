@@ -168,6 +168,9 @@ export default function SettingsPage() {
         const data = await res.json()
         setCvMarkdown(data.markdown ?? "")
         setCvEditing(false)
+        // Show brief success indicator
+        setProfileSaved(true)
+        setTimeout(() => setProfileSaved(false), 3000)
       }
     } catch {
       // handle error
@@ -500,9 +503,15 @@ export default function SettingsPage() {
 
                   {/* CV Content */}
                   {cvMarkdown && (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <Label>Parsed CV</Label>
+                        <div className="flex items-center gap-2">
+                          <Label>Your CV</Label>
+                          <span className="text-xs text-green-600 bg-green-50 dark:bg-green-950 px-2 py-0.5 rounded">
+                            <Check className="inline h-3 w-3 mr-1" />
+                            Saved
+                          </span>
+                        </div>
                         <div className="flex gap-2">
                           {cvEditing ? (
                             <>
@@ -518,7 +527,7 @@ export default function SettingsPage() {
                               </Button>
                               <Button size="sm" onClick={handleCvSave}>
                                 <Save className="mr-1 h-3 w-3" />
-                                Save
+                                Save Changes
                               </Button>
                             </>
                           ) : (
@@ -528,7 +537,7 @@ export default function SettingsPage() {
                               onClick={() => setCvEditing(true)}
                             >
                               <Pencil className="mr-1 h-3 w-3" />
-                              Edit CV
+                              Edit
                             </Button>
                           )}
                         </div>
@@ -538,8 +547,11 @@ export default function SettingsPage() {
                         onChange={(e) => setCvMarkdown(e.target.value)}
                         readOnly={!cvEditing}
                         rows={20}
-                        className="font-mono text-xs"
+                        className={`font-mono text-xs ${!cvEditing ? "bg-muted/50" : ""}`}
                       />
+                      <p className="text-xs text-muted-foreground">
+                        Your CV is automatically saved when uploaded. Click Edit to make manual changes.
+                      </p>
                     </div>
                   )}
                 </div>
