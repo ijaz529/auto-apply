@@ -70,6 +70,19 @@ interface SimilarJob {
   url: string
   company: string
   location: string
+  relevance?: number
+}
+
+interface SimilarMeta {
+  companiesScanned: number
+  totalJobsFound: number
+  source?: "evaluated_jobs" | "preferences"
+  signalsUsed?: {
+    archetypes: string[]
+    seniority: string[]
+    locations: string[]
+    roleKeywordCount: number
+  } | null
 }
 
 export default function JobsPage() {
@@ -101,10 +114,7 @@ export default function JobsPage() {
   // Similar jobs state
   const [similarJobs, setSimilarJobs] = useState<SimilarJob[]>([])
   const [similarScanning, setSimilarScanning] = useState(false)
-  const [similarMeta, setSimilarMeta] = useState<{
-    companiesScanned: number
-    totalJobsFound: number
-  } | null>(null)
+  const [similarMeta, setSimilarMeta] = useState<SimilarMeta | null>(null)
   const [similarError, setSimilarError] = useState<string | null>(null)
   const [addingJobUrl, setAddingJobUrl] = useState<string | null>(null)
 
@@ -895,10 +905,12 @@ export default function JobsPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
             <SearchCheck className="h-5 w-5" />
-            Find More Jobs
+            Find Similar Jobs
           </CardTitle>
           <CardDescription>
-            Scan 18 company career pages (Greenhouse, Ashby, Lever) for matching roles based on your preferences.
+            {jobs.some((j) => j.evaluation)
+              ? "Scans 18 company portals using signals from your evaluated jobs (archetype, seniority, location)."
+              : "Scan 18 company career pages for matching roles. Add and evaluate jobs first for smarter results."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -916,7 +928,7 @@ export default function JobsPage() {
             ) : (
               <>
                 <Search className="mr-2 h-4 w-4" />
-                Scan for Similar Jobs
+                Find Similar Jobs
               </>
             )}
           </Button>
@@ -929,9 +941,35 @@ export default function JobsPage() {
           )}
 
           {similarMeta && (
-            <p className="text-xs text-muted-foreground">
-              Scanned {similarMeta.companiesScanned} companies, found {similarMeta.totalJobsFound} total jobs, {similarJobs.length} matching your preferences.
-            </p>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">
+                Scanned {similarMeta.companiesScanned} companies, found {similarMeta.totalJobsFound} total jobs, {similarJobs.length} matches ranked by relevance.
+              </p>
+              {similarMeta.signalsUsed && (
+                <div className="flex flex-wrap gap-1">
+                  {similarMeta.signalsUsed.archetypes.slice(0, 3).map((a) => (
+                    <Badge key={a} variant="secondary" className="text-xs capitalize">
+                      {a}
+                    </Badge>
+                  ))}
+                  {similarMeta.signalsUsed.seniority.map((s) => (
+                    <Badge key={s} variant="outline" className="text-xs capitalize">
+                      {s}
+                    </Badge>
+                  ))}
+                  {similarMeta.signalsUsed.locations.slice(0, 2).map((l) => (
+                    <Badge key={l} variant="outline" className="text-xs capitalize">
+                      {l}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              {similarMeta.source === "preferences" && (
+                <p className="text-xs text-amber-600">
+                  Using preferences text (no evaluated jobs found). Evaluate jobs first for smarter matching.
+                </p>
+              )}
+            </div>
           )}
 
           {similarJobs.length > 0 && (
@@ -945,6 +983,20 @@ export default function JobsPage() {
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
+                        {sj.relevance != null && (
+                          <span
+                            className={`inline-flex items-center justify-center h-6 min-w-[2rem] px-1 rounded text-xs font-bold ${
+                              sj.relevance >= 70
+                                ? "bg-green-100 text-green-800"
+                                : sj.relevance >= 40
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-gray-100 text-gray-600"
+                            }`}
+                            title={`Relevance: ${sj.relevance}%`}
+                          >
+                            {sj.relevance}%
+                          </span>
+                        )}
                         <span className="font-medium">{sj.company}</span>
                         <span className="text-muted-foreground">&mdash;</span>
                         <span>{sj.title}</span>
@@ -970,7 +1022,7 @@ export default function JobsPage() {
                         size="sm"
                         disabled={addingJobUrl === sj.url}
                         onClick={() => handleAddSimilarJob(sj.url)}
-                        title="Add to evaluation queue"
+                        title="Evaluate this job"
                       >
                         {addingJobUrl === sj.url ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -983,7 +1035,7 @@ export default function JobsPage() {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground mt-2">
-                Click + to add a job to your evaluation queue.
+                Click + to evaluate a job and generate a tailored CV.
               </p>
             </div>
           )}

@@ -17,6 +17,7 @@ export interface JobResult {
   url: string
   company: string
   location: string
+  relevance?: number // 0-100 quick relevance score
 }
 
 export interface CompanyConfig {
