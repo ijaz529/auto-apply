@@ -9,15 +9,14 @@ export function middleware(req: NextRequest) {
     pathname.startsWith("/api") ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/register") ||
-    pathname.startsWith("/onboarding") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon")
   ) {
     return NextResponse.next()
   }
 
-  // Root redirects to /jobs
-  if (pathname === "/") {
+  // Everything except /jobs redirects to /jobs
+  if (pathname !== "/jobs" && !pathname.startsWith("/jobs/")) {
     return NextResponse.redirect(new URL("/jobs", req.nextUrl.origin))
   }
 
