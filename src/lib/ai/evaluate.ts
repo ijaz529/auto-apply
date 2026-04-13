@@ -28,12 +28,25 @@ interface RawEvaluationJson {
 }
 
 function extractJson(text: string): string {
+  // Try code fence first
   const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/)
   if (fenceMatch) return fenceMatch[1].trim()
 
-  const objectMatch = text.match(/\{[\s\S]*\}/)
-  if (objectMatch) return objectMatch[0]
+  // Find the outermost { ... } pair by counting braces
+  let start = text.indexOf("{")
+  if (start === -1) return text
 
+  let depth = 0
+  let end = -1
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === "{") depth++
+    else if (text[i] === "}") {
+      depth--
+      if (depth === 0) { end = i; break }
+    }
+  }
+
+  if (end > start) return text.substring(start, end + 1)
   return text
 }
 
@@ -52,12 +65,8 @@ function buildReportMarkdown(parsed: RawEvaluationJson): string {
   }
 
   const blockLabels: Record<string, string> = {
-    A: "Role Summary",
-    B: "CV Match",
-    C: "Level Strategy",
-    D: "Comp & Demand",
-    E: "Personalization Plan",
-    F: "Interview Prep",
+    A: "Role Summary", B: "CV Match", C: "Level Strategy",
+    D: "Comp & Demand", E: "Personalization Plan", F: "Interview Prep",
     G: "Posting Legitimacy",
   }
 
@@ -101,7 +110,12 @@ export async function evaluateJob(
   }
 
   const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" })
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash",
+    generationConfig: {
+      responseMimeType: "application/json",
+    },
+  })
 
   const prompt = [
     SYSTEM_PROMPT_SHARED,
@@ -113,6 +127,7 @@ export async function evaluateJob(
     preferences ? `\n\n## Candidate Preferences\n${preferences}` : "",
     "\n\n---\n\n",
     EVALUATION_PROMPT,
+    "\n\nIMPORTANT: Respond with ONLY a valid JSON object. No text before or after the JSON.",
   ].join("\n")
 
   const result = await model.generateContent(prompt)
@@ -128,20 +143,53 @@ export async function evaluateJob(
   let parsed: RawEvaluationJson
   try {
     parsed = JSON.parse(rawJson) as RawEvaluationJson
-  } catch (e) {
-    // If JSON parsing fails, create a basic result from the text
-    console.error("Failed to parse Gemini JSON, raw text:", text.substring(0, 500))
-    throw new Error(`Failed to parse evaluation JSON: ${e instanceof Error ? e.message : "unknown"}`)
+  } catch {
+    // Try sanitizing: fix common issues like unescaped newlines in strings
+    try {
+      // Walk char-by-char to escape newlines/tabs inside JSON strings
+      let sanitized = ""
+      let inStr = false
+      let esc = false
+      for (let i = 0; i < rawJson.length; i++) {
+        const ch = rawJson[i]
+        if (esc) { sanitized += ch; esc = false; continue }
+        if (ch === "\\") { sanitized += ch; esc = true; continue }
+        if (ch === '"') { inStr = !inStr; sanitized += ch; continue }
+        if (inStr && ch === "\n") { sanitized += "\\n"; continue }
+        if (inStr && ch === "\r") { sanitized += "\\r"; continue }
+        if (inStr && ch === "\t") { sanitized += "\\t"; continue }
+        sanitized += ch
+      }
+      parsed = JSON.parse(sanitized) as RawEvaluationJson
+    } catch (e2) {
+      // Last resort: try to extract just the score and basic info
+      console.error("JSON parse failed even after sanitize. First 500 chars:", rawJson.substring(0, 500))
+      const scoreMatch = rawJson.match(/"score"\s*:\s*([\d.]+)/)
+      const archetypeMatch = rawJson.match(/"archetype"\s*:\s*"([^"]*)"/)
+      if (scoreMatch) {
+        parsed = {
+          score: parseFloat(scoreMatch[1]),
+          archetype: archetypeMatch?.[1] || "Unknown",
+          legitimacy: "Proceed with Caution",
+          scoreBreakdown: {},
+          keywords: [],
+          gaps: [],
+          blocks: {},
+          manualApplySteps: [],
+          coverLetterDraft: "",
+        }
+      } else {
+        throw new Error(`Failed to parse evaluation JSON: ${e2 instanceof Error ? e2.message : "unknown"}`)
+      }
+    }
   }
 
-  if (typeof parsed.score !== "number" || parsed.score < 1 || parsed.score > 5) {
-    // Try to salvage
-    if (typeof parsed.score === "string") {
-      parsed.score = parseFloat(parsed.score as unknown as string)
-    }
-    if (isNaN(parsed.score) || parsed.score < 1 || parsed.score > 5) {
-      parsed.score = 3.0 // Default if score is garbage
-    }
+  // Salvage score
+  if (typeof parsed.score !== "number") {
+    parsed.score = typeof parsed.score === "string" ? parseFloat(parsed.score as unknown as string) : 3.0
+  }
+  if (isNaN(parsed.score) || parsed.score < 1 || parsed.score > 5) {
+    parsed.score = 3.0
   }
 
   const reportMarkdown = buildReportMarkdown(parsed)
