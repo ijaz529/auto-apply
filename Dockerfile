@@ -27,4 +27,4 @@ RUN npm run build
 EXPOSE 3000
 
 ENV PRISMA_HIDE_UPDATE_MESSAGE=1
-CMD ["sh", "-c", "echo 'Syncing DB...' && npx prisma db push --skip-generate --accept-data-loss 2>&1 && echo 'Starting Next.js on port '${PORT:-3000}'...' && node node_modules/next/dist/bin/next start -H 0.0.0.0 -p ${PORT:-3000}"]
+CMD ["sh", "-c", "node node_modules/next/dist/bin/next start -H 0.0.0.0 -p ${PORT:-3000}"]
