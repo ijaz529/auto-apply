@@ -185,9 +185,14 @@ export async function POST(req: NextRequest) {
             data: { jobId: job.id, userId, status: "pending" },
           })
 
-          // Fire-and-forget evaluation if JD was fetched
-          if (jdText) {
+          // Fire-and-forget evaluation if JD has enough content (min 200 chars)
+          if (jdText && jdText.length >= 200) {
             evaluateInBackground(job.id, userId)
+          } else if (jdText && jdText.length < 200) {
+            await prisma.application.updateMany({
+              where: { jobId: job.id, userId },
+              data: { status: "evaluated", notes: "JD too short — likely a search page, not a job posting. Try pasting the full JD text instead." },
+            })
           }
 
           results.push({ jobId: job.id, company, role, status: "created" })
