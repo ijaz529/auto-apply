@@ -3,58 +3,17 @@ import { getUserId } from "@/lib/guest"
 import { prisma } from "@/lib/db"
 import { evaluateJob } from "@/lib/ai/evaluate"
 
-export async function POST(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// Fire-and-forget evaluation — runs Claude in background, writes to DB when done
+async function runEvaluationInBackground(jobId: string, userId: string) {
   try {
-    const userId = await getUserId()
+    const job = await prisma.job.findFirst({ where: { id: jobId, userId } })
+    if (!job?.jdText) return
 
-    const { id } = await params
+    const profile = await prisma.profile.findUnique({ where: { userId } })
+    if (!profile?.cvMarkdown) return
 
-    // Load the job
-    const job = await prisma.job.findFirst({
-      where: {
-        id,
-        userId,
-      },
-    })
+    const model = (profile.preferredModel === "opus" ? "opus" : "sonnet") as "sonnet" | "opus"
 
-    if (!job) {
-      return NextResponse.json({ error: "Job not found" }, { status: 404 })
-    }
-
-    if (!job.jdText) {
-      return NextResponse.json(
-        {
-          error:
-            "No JD text available for this job. The JD fetch may have failed. Try re-adding the URL.",
-        },
-        { status: 400 }
-      )
-    }
-
-    // Load user's CV and preferences
-    const profile = await prisma.profile.findUnique({
-      where: { userId },
-    })
-
-    if (!profile?.cvMarkdown) {
-      return NextResponse.json(
-        {
-          error:
-            "No CV found. Upload your CV first via /api/cv/upload.",
-        },
-        { status: 400 }
-      )
-    }
-
-    // Determine model
-    const model = (profile.preferredModel === "opus" ? "opus" : "sonnet") as
-      | "sonnet"
-      | "opus"
-
-    // Run evaluation
     const result = await evaluateJob(
       job.jdText,
       profile.cvMarkdown,
@@ -62,21 +21,15 @@ export async function POST(
       model
     )
 
-    // Build enriched report with actual company/role names
-    const enrichedReport = result.reportMarkdown
-      .replace(
-        "# Evaluation: Role at Company",
-        `# Evaluation: ${job.role} at ${job.company}`
-      )
+    const enrichedReport = result.reportMarkdown.replace(
+      "# Evaluation: Role at Company",
+      `# Evaluation: ${job.role} at ${job.company}`
+    )
 
-    // Check if evaluation already exists (re-evaluation)
-    const existingEval = await prisma.evaluation.findUnique({
-      where: { jobId: job.id },
-    })
+    const existingEval = await prisma.evaluation.findUnique({ where: { jobId } })
 
-    let evaluation
     if (existingEval) {
-      evaluation = await prisma.evaluation.update({
+      await prisma.evaluation.update({
         where: { id: existingEval.id },
         data: {
           score: result.score,
@@ -91,9 +44,9 @@ export async function POST(
         },
       })
     } else {
-      evaluation = await prisma.evaluation.create({
+      await prisma.evaluation.create({
         data: {
-          jobId: job.id,
+          jobId,
           userId,
           score: result.score,
           archetype: result.archetype,
@@ -108,44 +61,56 @@ export async function POST(
       })
     }
 
-    // Update application with manual apply steps
     await prisma.application.updateMany({
-      where: {
-        jobId: job.id,
-        userId,
-      },
+      where: { jobId, userId },
       data: {
         status: "evaluated",
         manualSteps: result.manualApplySteps,
       },
     })
 
-    return NextResponse.json({
-      evaluation,
-      coverLetterDraft: result.coverLetterDraft,
-      manualApplySteps: result.manualApplySteps,
-    })
+    console.log(`Evaluation complete for job ${jobId}: score ${result.score}`)
   } catch (error) {
-    console.error("Evaluation error:", error)
+    console.error(`Background evaluation failed for job ${jobId}:`, error)
+  }
+}
 
-    // Provide more specific error messages for common failures
-    if (error instanceof Error) {
-      if (error.message.includes("API key")) {
-        return NextResponse.json(
-          { error: "Anthropic API key not configured. Set ANTHROPIC_API_KEY in your environment." },
-          { status: 500 }
-        )
-      }
-      if (error.message.includes("rate limit")) {
-        return NextResponse.json(
-          { error: "Rate limited by Claude API. Please wait a moment and try again." },
-          { status: 429 }
-        )
-      }
+export async function POST(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const userId = await getUserId()
+    const { id } = await params
+
+    const job = await prisma.job.findFirst({ where: { id, userId } })
+    if (!job) {
+      return NextResponse.json({ error: "Job not found" }, { status: 404 })
     }
 
+    if (!job.jdText) {
+      return NextResponse.json(
+        { error: "No JD text available. Try re-adding the URL or paste the JD text." },
+        { status: 400 }
+      )
+    }
+
+    const profile = await prisma.profile.findUnique({ where: { userId } })
+    if (!profile?.cvMarkdown) {
+      return NextResponse.json(
+        { error: "No CV found. Upload your CV first." },
+        { status: 400 }
+      )
+    }
+
+    // Fire and forget — don't await, return immediately
+    runEvaluationInBackground(id, userId)
+
+    return NextResponse.json({ status: "evaluating", jobId: id })
+  } catch (error) {
+    console.error("Evaluation trigger error:", error)
     return NextResponse.json(
-      { error: "Evaluation failed. Please try again." },
+      { error: "Failed to start evaluation." },
       { status: 500 }
     )
   }
