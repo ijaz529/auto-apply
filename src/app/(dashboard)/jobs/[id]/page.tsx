@@ -447,15 +447,15 @@ export default function JobDetailPage() {
             <span className="text-muted-foreground">Added: </span>
             {new Date(job.createdAt).toLocaleDateString()}
           </div>
-          <div>
+          <div className="min-w-0 max-w-full">
             <span className="text-muted-foreground">URL: </span>
             <a
               href={job.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary underline underline-offset-2"
+              className="text-primary underline underline-offset-2 break-all"
             >
-              {job.url}
+              {job.url.length > 80 ? job.url.slice(0, 80) + "..." : job.url}
             </a>
           </div>
         </CardContent>

@@ -15,9 +15,10 @@ model User {
   name          String?
   passwordHash  String?
   image         String?
-  role          UserRole  @default(USER)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  role               UserRole  @default(USER)
+  onboardingComplete Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   profile       Profile?
   jobs          Job[]

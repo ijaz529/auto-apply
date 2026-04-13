@@ -4,7 +4,19 @@ import type { NextRequest } from "next/server"
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  // Redirect root to dashboard
+  // Allow auth routes, API routes, static files
+  if (
+    pathname.startsWith("/api") ||
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/register") ||
+    pathname.startsWith("/onboarding") ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/favicon")
+  ) {
+    return NextResponse.next()
+  }
+
+  // Root redirects to /jobs
   if (pathname === "/") {
     return NextResponse.redirect(new URL("/jobs", req.nextUrl.origin))
   }
@@ -13,7 +25,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api|public).*)",
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 }

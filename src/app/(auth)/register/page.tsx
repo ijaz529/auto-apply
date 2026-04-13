@@ -1,44 +1,45 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { signIn } from "next-auth/react"
 import Link from "next/link"
+import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 export default function RegisterPage() {
-  const router = useRouter()
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
-  const [error, setError] = useState("")
+  const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
+
+  function validate(): boolean {
+    const newErrors: Record<string, string> = {}
+
+    if (!name.trim()) newErrors.name = "Full name is required"
+    if (!email.trim()) newErrors.email = "Email is required"
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      newErrors.email = "Enter a valid email"
+    if (!password) newErrors.password = "Password is required"
+    else if (password.length < 8)
+      newErrors.password = "Password must be at least 8 characters"
+    if (password !== confirmPassword)
+      newErrors.confirmPassword = "Passwords do not match"
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setError("")
-
-    if (password !== confirmPassword) {
-      setError("Passwords do not match")
-      return
-    }
-
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters")
-      return
-    }
+    if (!validate()) return
 
     setLoading(true)
+    setErrors({})
 
     try {
       const res = await fetch("/api/auth/register", {
@@ -50,13 +51,26 @@ export default function RegisterPage() {
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error || "Something went wrong")
+        setErrors({ form: data.error || "Registration failed" })
+        setLoading(false)
         return
       }
 
-      router.push("/login?registered=true")
+      // Auto-login after successful registration
+      const signInResult = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      })
+
+      if (signInResult?.error) {
+        // Registration succeeded but auto-login failed, redirect to login
+        window.location.href = "/login"
+      } else {
+        window.location.href = "/onboarding"
+      }
     } catch {
-      setError("Something went wrong. Please try again.")
+      setErrors({ form: "Something went wrong. Please try again." })
     } finally {
       setLoading(false)
     }
@@ -65,24 +79,30 @@ export default function RegisterPage() {
   return (
     <Card>
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
-        <CardDescription>
-          Get started with AutoApply
-        </CardDescription>
+        <CardTitle className="text-2xl">Create an account</CardTitle>
+        <CardDescription>Get started with AutoApply</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {errors.form && (
+            <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+              {errors.form}
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="name">Full Name</Label>
             <Input
               id="name"
-              type="text"
-              placeholder="Your full name"
+              placeholder="Jane Doe"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              required
             />
+            {errors.name && (
+              <p className="text-xs text-destructive">{errors.name}</p>
+            )}
           </div>
+
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -91,9 +111,12 @@ export default function RegisterPage() {
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              required
             />
+            {errors.email && (
+              <p className="text-xs text-destructive">{errors.email}</p>
+            )}
           </div>
+
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
             <Input
@@ -102,9 +125,12 @@ export default function RegisterPage() {
               placeholder="At least 8 characters"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              required
             />
+            {errors.password && (
+              <p className="text-xs text-destructive">{errors.password}</p>
+            )}
           </div>
+
           <div className="space-y-2">
             <Label htmlFor="confirmPassword">Confirm Password</Label>
             <Input
@@ -113,25 +139,25 @@ export default function RegisterPage() {
               placeholder="Repeat your password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              required
             />
+            {errors.confirmPassword && (
+              <p className="text-xs text-destructive">{errors.confirmPassword}</p>
+            )}
           </div>
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
-          )}
+
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Creating account..." : "Create account"}
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Create Account
           </Button>
         </form>
-      </CardContent>
-      <CardFooter className="justify-center">
-        <p className="text-sm text-muted-foreground">
+
+        <p className="mt-4 text-center text-sm text-muted-foreground">
           Already have an account?{" "}
-          <Link href="/login" className="text-primary underline-offset-4 hover:underline">
+          <Link href="/login" className="text-primary underline underline-offset-2">
             Sign in
           </Link>
         </p>
-      </CardFooter>
+      </CardContent>
     </Card>
   )
 }
