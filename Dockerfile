@@ -19,14 +19,11 @@ RUN npm ci
 
 COPY . .
 
-# Build-time dummy URL (no real DB needed for compilation)
-ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
+# Use ARG for build-time only (does NOT persist to runtime)
+ARG DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
 RUN npx prisma generate
 RUN npm run build
 
-# Remove build-time dummy
-ENV DATABASE_URL=""
-
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node_modules/.bin/next start -H 0.0.0.0 -p ${PORT:-3000}"]
+CMD ["sh", "-c", "npx prisma db push --skip-generate 2>&1 && echo 'DB synced. Starting Next.js...' && npx next start --hostname 0.0.0.0 --port ${PORT:-3000}"]
