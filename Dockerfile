@@ -1,14 +1,14 @@
 FROM node:20-slim AS base
 
 # Install Typst for PDF generation (direct binary from GitHub releases)
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates xz-utils && \
     TYPST_VERSION="0.13.1" && \
     curl -fsSL "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-x86_64-unknown-linux-musl.tar.xz" -o /tmp/typst.tar.xz && \
     tar xf /tmp/typst.tar.xz -C /tmp && \
     mv /tmp/typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst && \
     chmod +x /usr/local/bin/typst && \
     rm -rf /tmp/typst* && \
-    apt-get remove -y curl && apt-get autoremove -y && \
+    apt-get remove -y curl xz-utils && apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
