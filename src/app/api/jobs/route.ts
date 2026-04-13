@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getUserId } from "@/lib/guest"
 import { prisma } from "@/lib/db"
 import { fetchJd } from "@/lib/ai/parse-jd"
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = await getUserId()
 
     const { searchParams } = new URL(req.url)
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10))
@@ -20,7 +17,7 @@ export async function GET(req: NextRequest) {
 
     const [jobs, total] = await Promise.all([
       prisma.job.findMany({
-        where: { userId: session.user.id },
+        where: { userId },
         include: {
           evaluation: true,
           application: true,
@@ -29,7 +26,7 @@ export async function GET(req: NextRequest) {
         skip,
         take: limit,
       }),
-      prisma.job.count({ where: { userId: session.user.id } }),
+      prisma.job.count({ where: { userId } }),
     ])
 
     return NextResponse.json({
@@ -52,10 +49,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = await getUserId()
 
     const body = await req.json()
     const { urls, preferences } = body as {
@@ -92,9 +86,9 @@ export async function POST(req: NextRequest) {
     // Store preferences if provided
     if (preferences) {
       await prisma.profile.upsert({
-        where: { userId: session.user.id },
+        where: { userId },
         update: { preferences },
-        create: { userId: session.user.id, preferences },
+        create: { userId, preferences },
       })
     }
 
@@ -127,7 +121,7 @@ export async function POST(req: NextRequest) {
         // Create Job record
         const job = await prisma.job.create({
           data: {
-            userId: session.user.id,
+            userId,
             url,
             company,
             role,
@@ -140,7 +134,7 @@ export async function POST(req: NextRequest) {
         await prisma.application.create({
           data: {
             jobId: job.id,
-            userId: session.user.id,
+            userId,
             status: "evaluated",
           },
         })

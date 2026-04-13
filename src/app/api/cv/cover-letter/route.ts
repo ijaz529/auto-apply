@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getUserId } from "@/lib/guest"
 import { prisma } from "@/lib/db"
 import { renderCoverLetter } from "@/lib/pdf/templates/cover-letter"
 import { compileTypst } from "@/lib/pdf/typst-compile"
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = await getUserId()
 
     const body = await req.json().catch(() => ({}))
     const { jobId } = body as { jobId?: string }
@@ -25,7 +22,7 @@ export async function POST(req: NextRequest) {
     const job = await prisma.job.findFirst({
       where: {
         id: jobId,
-        userId: session.user.id,
+        userId,
       },
       include: {
         evaluation: true,
@@ -45,7 +42,7 @@ export async function POST(req: NextRequest) {
 
     // Load user profile
     const profile = await prisma.profile.findUnique({
-      where: { userId: session.user.id },
+      where: { userId },
     })
 
     if (!profile) {
@@ -140,7 +137,7 @@ export async function POST(req: NextRequest) {
     const typContent = renderCoverLetter({
       fullName: profile.fullName ?? profile.email ?? "Applicant",
       location: profile.location ?? "",
-      email: profile.email ?? session.user.email ?? "",
+      email: profile.email ?? "",
       phone: profile.phone ?? "",
       date: today,
       company: job.company,

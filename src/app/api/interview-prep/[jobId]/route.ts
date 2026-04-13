@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getUserId } from "@/lib/guest"
 import { prisma } from "@/lib/db"
 import { generateInterviewPrep } from "@/lib/ai/interview-prep"
 
@@ -8,16 +8,13 @@ export async function GET(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = await getUserId()
 
     const { jobId } = await params
 
     // Check if job exists and belongs to user
     const job = await prisma.job.findFirst({
-      where: { id: jobId, userId: session.user.id },
+      where: { id: jobId, userId },
       include: { evaluation: true },
     })
 
@@ -55,16 +52,13 @@ export async function POST(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = await getUserId()
 
     const { jobId } = await params
 
     // Verify job exists and belongs to user
     const job = await prisma.job.findFirst({
-      where: { id: jobId, userId: session.user.id },
+      where: { id: jobId, userId },
     })
 
     if (!job) {
@@ -72,7 +66,7 @@ export async function POST(
     }
 
     // Generate interview prep
-    const prep = await generateInterviewPrep(jobId, session.user.id)
+    const prep = await generateInterviewPrep(jobId, userId)
 
     // Cache the result in the evaluation's blocksJson
     const eval_ = await prisma.evaluation.findUnique({

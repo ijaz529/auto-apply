@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getUserId } from "@/lib/guest"
 import { prisma } from "@/lib/db"
 import { parsePdf, parseDocx, structureCv } from "@/lib/cv/parser"
 import type { Prisma } from "@prisma/client"
@@ -15,10 +15,7 @@ const ALLOWED_EXTENSIONS = new Set(["pdf", "docx", "txt", "md"])
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = await getUserId()
 
     const formData = await req.formData()
     const file = formData.get("file")
@@ -104,13 +101,13 @@ export async function POST(req: NextRequest) {
       : undefined
 
     await prisma.profile.upsert({
-      where: { userId: session.user.id },
+      where: { userId },
       update: {
         cvMarkdown: rawText,
         cvStructured: cvJson,
       },
       create: {
-        userId: session.user.id,
+        userId,
         cvMarkdown: rawText,
         cvStructured: cvJson,
       },

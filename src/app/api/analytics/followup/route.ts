@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getUserId } from "@/lib/guest"
 import { getFollowUpSchedule } from "@/lib/analytics/followup"
 
 export async function GET() {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = await getUserId()
 
-    const schedule = await getFollowUpSchedule(session.user.id)
+    const schedule = await getFollowUpSchedule(userId)
 
     return NextResponse.json({
       totalItems: schedule.length,

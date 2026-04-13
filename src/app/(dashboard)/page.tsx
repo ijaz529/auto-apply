@@ -1,6 +1,5 @@
 "use client"
 
-import { useSession } from "next-auth/react"
 import { useState, useEffect, useCallback } from "react"
 import {
   Briefcase,
@@ -81,8 +80,7 @@ function ActivitySkeleton() {
 }
 
 export default function DashboardPage() {
-  const { data: session } = useSession()
-  const firstName = session?.user?.name?.split(" ")[0] ?? "there"
+  const firstName = "there"
 
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [activity, setActivity] = useState<RecentActivity[]>([])

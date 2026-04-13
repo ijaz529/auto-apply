@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getUserId } from "@/lib/guest"
 import { prisma } from "@/lib/db"
 import { renderTemplate } from "@/lib/pdf/templates/registry"
 import { compileTypst } from "@/lib/pdf/typst-compile"
@@ -7,10 +7,7 @@ import type { CVData } from "@/types"
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = await getUserId()
 
     const body = await req.json().catch(() => ({}))
     const { templateSlug, jobId } = body as {
@@ -20,7 +17,7 @@ export async function POST(req: NextRequest) {
 
     // Load user profile
     const profile = await prisma.profile.findUnique({
-      where: { userId: session.user.id },
+      where: { userId },
     })
 
     if (!profile?.cvStructured) {
@@ -41,7 +38,7 @@ export async function POST(req: NextRequest) {
       const evaluation = await prisma.evaluation.findFirst({
         where: {
           jobId,
-          userId: session.user.id,
+          userId,
         },
       })
       if (evaluation?.keywords) {

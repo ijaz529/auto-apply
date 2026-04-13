@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getUserId } from "@/lib/guest"
 import { prisma } from "@/lib/db"
 
 export async function GET() {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = await getUserId()
 
     const scan = await prisma.scan.findFirst({
-      where: { userId: session.user.id },
+      where: { userId },
       orderBy: { updatedAt: "desc" },
     })
 
@@ -33,10 +30,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = await getUserId()
 
     const body = await req.json()
     const { portalsConfig, titleFilter, frequencyDays, enabled } = body as {
@@ -63,7 +57,7 @@ export async function POST(req: NextRequest) {
 
     // Upsert: find existing scan for this user or create new one
     const existingScan = await prisma.scan.findFirst({
-      where: { userId: session.user.id },
+      where: { userId },
       orderBy: { updatedAt: "desc" },
     })
 
@@ -83,7 +77,7 @@ export async function POST(req: NextRequest) {
     } else {
       scan = await prisma.scan.create({
         data: {
-          userId: session.user.id,
+          userId,
           ...data,
         },
       })

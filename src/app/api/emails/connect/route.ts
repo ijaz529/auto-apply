@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getUserId } from "@/lib/guest"
 import { connectGmail } from "@/lib/email/gmail"
 
 export async function POST(req: Request) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = await getUserId()
 
     const body = await req.json().catch(() => ({}))
     const { authCode } = body as { authCode?: string }
@@ -30,7 +27,7 @@ export async function POST(req: Request) {
       )
     }
 
-    const result = await connectGmail(session.user.id, authCode)
+    const result = await connectGmail(userId, authCode)
 
     if (!result.success) {
       return NextResponse.json(

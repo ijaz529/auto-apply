@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getUserId } from "@/lib/guest"
 import { prisma } from "@/lib/db"
 import {
   scanPortals,
@@ -9,14 +9,11 @@ import {
 
 export async function POST() {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = await getUserId()
 
     // Load scan config
     const scan = await prisma.scan.findFirst({
-      where: { userId: session.user.id, enabled: true },
+      where: { userId, enabled: true },
       orderBy: { updatedAt: "desc" },
     })
 
@@ -35,11 +32,11 @@ export async function POST() {
 
     // Load existing job URLs for deduplication
     const existingJobs = await prisma.job.findMany({
-      where: { userId: session.user.id },
+      where: { userId },
       select: { url: true },
     })
     const existingScanResults = await prisma.scanResult.findMany({
-      where: { scan: { userId: session.user.id } },
+      where: { scan: { userId } },
       select: { url: true },
     })
 

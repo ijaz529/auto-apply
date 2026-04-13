@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getUserId } from "@/lib/guest"
 import { prisma } from "@/lib/db"
 
 export async function GET() {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  const userId = await getUserId()
 
   const profile = await prisma.profile.findUnique({
-    where: { userId: session.user.id },
+    where: { userId },
   })
 
   if (!profile) {
@@ -20,15 +17,12 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  const userId = await getUserId()
 
   const body = await req.json()
 
   const profile = await prisma.profile.upsert({
-    where: { userId: session.user.id },
+    where: { userId },
     update: {
       fullName: body.fullName,
       email: body.email,
@@ -47,7 +41,7 @@ export async function PUT(req: Request) {
       preferredModel: body.preferredModel,
     },
     create: {
-      userId: session.user.id,
+      userId,
       fullName: body.fullName,
       email: body.email,
       phone: body.phone,

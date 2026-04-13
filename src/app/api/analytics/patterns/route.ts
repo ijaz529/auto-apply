@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getUserId } from "@/lib/guest"
 import { analyzePatterns } from "@/lib/analytics/patterns"
 
 export async function GET() {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = await getUserId()
 
-    const analysis = await analyzePatterns(session.user.id)
+    const analysis = await analyzePatterns(userId)
 
     return NextResponse.json({ analysis })
   } catch (error) {

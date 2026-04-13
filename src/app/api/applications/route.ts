@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getUserId } from "@/lib/guest"
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@prisma/client"
 
@@ -18,10 +18,7 @@ const VALID_SORT_FIELDS = new Set(["score", "createdAt", "appliedAt", "status"])
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = await getUserId()
 
     const { searchParams } = new URL(req.url)
     const status = searchParams.get("status")
@@ -36,7 +33,7 @@ export async function GET(req: NextRequest) {
 
     // Build where clause
     const where: Prisma.ApplicationWhereInput = {
-      userId: session.user.id,
+      userId,
     }
 
     if (status && VALID_STATUSES.has(status)) {

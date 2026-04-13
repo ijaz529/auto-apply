@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getUserId } from "@/lib/guest"
 import { prisma } from "@/lib/db"
 
 const VALID_STATUSES = new Set([
@@ -18,10 +18,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = await getUserId()
 
     const { id } = await params
 
@@ -45,7 +42,7 @@ export async function PUT(
     const application = await prisma.application.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        userId,
       },
     })
 

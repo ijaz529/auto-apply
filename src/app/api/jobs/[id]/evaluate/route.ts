@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getUserId } from "@/lib/guest"
 import { prisma } from "@/lib/db"
 import { evaluateJob } from "@/lib/ai/evaluate"
 
@@ -8,10 +8,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const userId = await getUserId()
 
     const { id } = await params
 
@@ -19,7 +16,7 @@ export async function POST(
     const job = await prisma.job.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        userId,
       },
     })
 
@@ -39,7 +36,7 @@ export async function POST(
 
     // Load user's CV and preferences
     const profile = await prisma.profile.findUnique({
-      where: { userId: session.user.id },
+      where: { userId },
     })
 
     if (!profile?.cvMarkdown) {
@@ -97,7 +94,7 @@ export async function POST(
       evaluation = await prisma.evaluation.create({
         data: {
           jobId: job.id,
-          userId: session.user.id,
+          userId,
           score: result.score,
           archetype: result.archetype,
           legitimacy: result.legitimacy,
@@ -115,7 +112,7 @@ export async function POST(
     await prisma.application.updateMany({
       where: {
         jobId: job.id,
-        userId: session.user.id,
+        userId,
       },
       data: {
         status: "evaluated",
