@@ -63,6 +63,15 @@ async function evaluateInBackground(jobId: string, userId: string) {
     console.log(`Evaluation complete for ${job.company} - ${job.role}: ${result.score}/5`)
   } catch (error) {
     console.error(`Background eval failed for job ${jobId}:`, error)
+    // Mark as failed so UI shows error instead of "pending" forever
+    try {
+      await prisma.application.updateMany({
+        where: { jobId, userId },
+        data: { status: "evaluated", notes: `Evaluation failed: ${error instanceof Error ? error.message : "Unknown error"}` },
+      })
+    } catch {
+      // ignore DB error
+    }
   }
 }
 
