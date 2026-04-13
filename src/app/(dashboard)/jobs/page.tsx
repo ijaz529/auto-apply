@@ -46,6 +46,7 @@ interface JobResult {
     status: string
     manualSteps: string[] | null
     cvPdfUrl: string | null
+    notes: string | null
   } | null
 }
 
@@ -70,6 +71,9 @@ export default function JobsPage() {
   const [loading, setLoading] = useState(true)
   const [expandedJob, setExpandedJob] = useState<string | null>(null)
   const [applyingJob, setApplyingJob] = useState<string | null>(null)
+
+  // API health
+  const [apiError, setApiError] = useState<string | null>(null)
 
   // Polling for evaluations
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
@@ -103,10 +107,23 @@ export default function JobsPage() {
     }
   }, [])
 
+  const checkHealth = useCallback(async () => {
+    try {
+      const res = await fetch("/api/health")
+      if (res.ok) {
+        const data = await res.json()
+        if (data.config?.geminiKey === "MISSING") {
+          setApiError("GEMINI_API_KEY is not set. Evaluations will fail. Add it to your Railway environment variables.")
+        }
+      }
+    } catch { /* ignore */ }
+  }, [])
+
   useEffect(() => {
     fetchJobs()
     checkCV()
-  }, [fetchJobs, checkCV])
+    checkHealth()
+  }, [fetchJobs, checkCV, checkHealth])
 
   // Poll for pending evaluations
   useEffect(() => {
@@ -237,6 +254,16 @@ export default function JobsPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
+      {/* API Error Banner */}
+      {apiError && (
+        <Card className="border-red-500/50 bg-red-50">
+          <CardContent className="flex items-center gap-3 py-3">
+            <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
+            <p className="text-sm text-red-800">{apiError}</p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Step 1: CV Upload */}
       <Card>
         <CardHeader className="pb-3">
@@ -411,12 +438,17 @@ export default function JobsPage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-semibold">{job.company}</h3>
                         {job.evaluation && <ScoreBadge score={job.evaluation.score} />}
-                        {!job.evaluation && job.jdText && (
+                        {!job.evaluation && job.jdText && !job.application?.notes?.startsWith("Evaluation failed") && !job.application?.notes?.startsWith("JD too short") && (
                           <Badge variant="outline" className="text-xs">
                             <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Evaluating
                           </Badge>
                         )}
-                        {!job.evaluation && !job.jdText && (
+                        {!job.evaluation && job.application?.notes && (
+                          <Badge variant="outline" className="text-xs text-red-600">
+                            Error
+                          </Badge>
+                        )}
+                        {!job.evaluation && !job.jdText && !job.application?.notes && (
                           <Badge variant="outline" className="text-xs text-red-600">
                             JD fetch failed
                           </Badge>
@@ -428,6 +460,9 @@ export default function JobsPage() {
                       <p className="text-sm text-muted-foreground mt-0.5">{job.role}</p>
                       {job.evaluation && (
                         <p className="text-xs mt-1 opacity-80">{getScoreLabel(job.evaluation.score)}</p>
+                      )}
+                      {!job.evaluation && job.application?.notes && (
+                        <p className="text-xs mt-1 text-red-600">{job.application.notes}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
