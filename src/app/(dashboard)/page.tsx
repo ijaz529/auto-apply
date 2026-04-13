@@ -248,7 +248,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Recent Activity</CardTitle>
-            <Button variant="ghost" size="sm" render={<Link href="/jobs" />}>
+            <Button variant="ghost" size="sm" onClick={() => window.location.href = "/jobs"}>
               View all
               <ArrowRight className="ml-1 h-3 w-3" />
             </Button>
@@ -304,7 +304,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Follow-up Reminders</CardTitle>
-            <Button variant="ghost" size="sm" render={<Link href="/applications" />}>
+            <Button variant="ghost" size="sm" onClick={() => window.location.href = "/applications"}>
               View all
               <ArrowRight className="ml-1 h-3 w-3" />
             </Button>
@@ -356,15 +356,15 @@ export default function DashboardPage() {
       <div>
         <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
         <div className="flex flex-wrap gap-3">
-          <Button render={<Link href="/jobs" />}>
+          <Button onClick={() => window.location.href = "/jobs"}>
             <Plus className="mr-2 h-4 w-4" />
             Add Job URLs
           </Button>
-          <Button variant="outline" render={<Link href="/settings" />}>
+          <Button variant="outline" onClick={() => window.location.href = "/settings"}>
             <Upload className="mr-2 h-4 w-4" />
             Upload CV
           </Button>
-          <Button variant="outline" render={<Link href="/scanner" />}>
+          <Button variant="outline" onClick={() => window.location.href = "/scanner"}>
             <Radar className="mr-2 h-4 w-4" />
             Run Scanner
           </Button>

@@ -162,9 +162,11 @@ export default function JobsPage() {
                 For best results, upload your CV before evaluating jobs. The AI uses it to match your experience against job requirements.
               </p>
             </div>
-            <Button variant="outline" size="sm" render={<Link href="/settings?tab=cv" />}>
-              Upload CV
-            </Button>
+            <Link href="/settings">
+              <Button variant="outline" size="sm">
+                Upload CV
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       )}

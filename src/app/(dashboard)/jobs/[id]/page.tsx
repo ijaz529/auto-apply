@@ -195,7 +195,7 @@ export default function JobDetailPage() {
             This job does not exist or has been removed.
           </p>
         </div>
-        <Button variant="outline" render={<Link href="/jobs" />}>
+        <Button variant="outline" onClick={() => window.location.href = "/jobs"}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Jobs
         </Button>
@@ -213,7 +213,7 @@ export default function JobDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" render={<Link href="/jobs" />}>
+        <Button variant="ghost" size="sm" onClick={() => window.location.href = "/jobs"}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
@@ -261,7 +261,7 @@ export default function JobDetailPage() {
         <Button
           variant="outline"
           disabled={isEvaluating}
-          render={<Link href={`/interview-prep?jobId=${id}`} />}
+          onClick={() => window.location.href = `/interview-prep?jobId=${id}`}
         >
           <GraduationCap className="mr-2 h-4 w-4" />
           Interview Prep
@@ -269,7 +269,7 @@ export default function JobDetailPage() {
         <Button
           variant="outline"
           disabled={isEvaluating}
-          render={<Link href={`/interview-prep?jobId=${id}&tab=outreach`} />}
+          onClick={() => window.location.href = `/interview-prep?jobId=${id}&tab=outreach`}
         >
           <Users className="mr-2 h-4 w-4" />
           LinkedIn Outreach
