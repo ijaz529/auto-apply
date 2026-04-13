@@ -1,0 +1,257 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Auth ────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  passwordHash  String?
+  image         String?
+  role          UserRole  @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  profile       Profile?
+  jobs          Job[]
+  applications  Application[]
+  scans         Scan[]
+  emails        Email[]
+  stories       Story[]
+  accounts      Account[]
+  sessions      Session[]
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ── Profile ─────────────────────────────────────────────────────────
+
+model Profile {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  cvMarkdown        String?  @db.Text
+  cvStructured      Json?
+  cvFileUrl         String?
+
+  fullName          String?
+  email             String?
+  phone             String?
+  phoneDubai        String?
+  location          String?
+  linkedin          String?
+  github            String?
+  portfolioUrl      String?
+  visaStatus        String?
+
+  targetRoles       Json?
+  salaryRange       String?
+  currency          String?  @default("EUR")
+  preferences       String?  @db.Text
+  narrativeJson     Json?
+
+  preferredTemplate String   @default("basic-resume")
+  preferredModel    String   @default("sonnet")
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// ── Jobs & Evaluations ──────────────────────────────────────────────
+
+model Job {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  url           String
+  company       String
+  role          String
+  jdText        String?      @db.Text
+  jdFetchedAt   DateTime?
+  location      String?
+  remote        String?
+  source        String?
+
+  evaluation    Evaluation?
+  application   Application?
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([userId, company])
+}
+
+model Evaluation {
+  id              String   @id @default(cuid())
+  jobId           String   @unique
+  job             Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId          String
+
+  score           Float
+  archetype       String?
+  legitimacy      String?
+  reportMarkdown  String   @db.Text
+  blocksJson      Json?
+  keywords        Json?
+  scoreBreakdown  Json?
+  gaps            Json?
+
+  model           String   @default("sonnet")
+  createdAt       DateTime @default(now())
+}
+
+// ── Applications ────────────────────────────────────────────────────
+
+model Application {
+  id              String     @id @default(cuid())
+  jobId           String     @unique
+  job             Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status          String     @default("evaluated")
+  appliedAt       DateTime?
+  cvPdfUrl        String?
+  coverLetterUrl  String?
+  manualSteps     Json?
+  notes           String?    @db.Text
+
+  followUps       FollowUp[]
+  emails          Email[]
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([userId, status])
+}
+
+model FollowUp {
+  id              String      @id @default(cuid())
+  applicationId   String
+  application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  dueDate         DateTime
+  channel         String
+  contact         String?
+  notes           String?     @db.Text
+  completed       Boolean     @default(false)
+
+  createdAt       DateTime    @default(now())
+}
+
+// ── Scanner ─────────────────────────────────────────────────────────
+
+model Scan {
+  id              String       @id @default(cuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  portalsConfig   Json
+  titleFilter     Json?
+  lastRun         DateTime?
+  frequencyDays   Int          @default(7)
+  enabled         Boolean      @default(true)
+  resultsCount    Int          @default(0)
+
+  scanResults     ScanResult[]
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+model ScanResult {
+  id          String   @id @default(cuid())
+  scanId      String
+  scan        Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  url         String
+  title       String
+  company     String
+  location    String?
+  source      String
+  status      String
+  firstSeen   DateTime @default(now())
+}
+
+// ── Email Monitoring ────────────────────────────────────────────────
+
+model Email {
+  id                  String       @id @default(cuid())
+  userId              String
+  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applicationId       String?
+  application         Application? @relation(fields: [applicationId], references: [id])
+
+  gmailMessageId      String?
+  subject             String
+  fromAddress         String
+  bodyPreview         String?      @db.Text
+  parsedStatus        String?
+  receivedAt          DateTime
+
+  createdAt           DateTime     @default(now())
+}
+
+// ── Interview Prep ──────────────────────────────────────────────────
+
+model Story {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  category    String
+  title       String
+  situation   String   @db.Text
+  task        String   @db.Text
+  action      String   @db.Text
+  result      String   @db.Text
+  reflection  String?  @db.Text
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
