@@ -87,8 +87,12 @@ function extractCVSignals(cv: CVData, profileLocation?: string | null): CVSignal
   const senioritySet = new Set<string>()
   const locationSet = new Set<string>()
 
+  const experience = cv.experience || []
+  const skills = cv.skills || []
+
   // 1. Extract role titles from work experience
-  for (const w of cv.experience) {
+  for (const w of experience) {
+    if (!w.title) continue
     const lower = w.title.toLowerCase()
 
     // Detect seniority from each title
@@ -116,7 +120,8 @@ function extractCVSignals(cv: CVData, profileLocation?: string | null): CVSignal
   }
 
   // 2. Extract skills
-  for (const cat of cv.skills) {
+  for (const cat of skills) {
+    if (!cat.items) continue
     for (const item of cat.items) {
       skillSet.add(item.toLowerCase())
     }
@@ -124,10 +129,10 @@ function extractCVSignals(cv: CVData, profileLocation?: string | null): CVSignal
 
   // 3. Map skills + role titles to domain search terms
   const allText = [
-    ...cv.experience.map((w) => w.title),
-    ...cv.experience.flatMap((w) => w.bullets),
-    ...cv.skills.flatMap((s) => s.items),
-    cv.summary,
+    ...experience.map((w) => w.title || ""),
+    ...experience.flatMap((w) => w.bullets || []),
+    ...skills.flatMap((s) => s.items || []),
+    cv.summary || "",
   ].join(" ").toLowerCase()
 
   for (const [keyword, titleTerms] of Object.entries(DOMAIN_TO_TITLE)) {
@@ -139,7 +144,7 @@ function extractCVSignals(cv: CVData, profileLocation?: string | null): CVSignal
   }
 
   // 4. If no seniority detected and experience > 5 years, assume senior
-  if (senioritySet.size === 0 && cv.experience.length >= 3) {
+  if (senioritySet.size === 0 && experience.length >= 3) {
     senioritySet.add("senior")
   }
 
@@ -264,6 +269,12 @@ export async function POST() {
     }
 
     const cv = profile.cvStructured as unknown as CVData
+    if (!cv || typeof cv !== "object") {
+      return NextResponse.json(
+        { error: "CV data is malformed. Try re-uploading your CV." },
+        { status: 400 }
+      )
+    }
     const signals = extractCVSignals(cv, profile.location)
     const titleFilter = buildCVFilter(signals)
 

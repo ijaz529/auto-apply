@@ -7,8 +7,8 @@
  * Ported from scan.mjs in career-ops.
  */
 
-const CONCURRENCY = 10
-const FETCH_TIMEOUT_MS = 10_000
+const CONCURRENCY = 15
+const FETCH_TIMEOUT_MS = 8_000
 
 // ── Types ──────────────────────────────────────────────────────────
 
