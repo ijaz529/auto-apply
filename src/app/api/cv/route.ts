@@ -18,9 +18,10 @@ export async function PUT(req: Request) {
     const userId = await getUserId()
     const { markdown } = await req.json()
 
-    await prisma.profile.update({
+    await prisma.profile.upsert({
       where: { userId },
-      data: { cvMarkdown: markdown },
+      update: { cvMarkdown: markdown },
+      create: { userId, cvMarkdown: markdown },
     })
 
     return NextResponse.json({ success: true })

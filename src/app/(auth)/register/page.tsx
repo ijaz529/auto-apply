@@ -67,7 +67,7 @@ export default function RegisterPage() {
         // Registration succeeded but auto-login failed, redirect to login
         window.location.href = "/login"
       } else {
-        window.location.href = "/onboarding"
+        window.location.href = "/jobs"
       }
     } catch {
       setErrors({ form: "Something went wrong. Please try again." })
