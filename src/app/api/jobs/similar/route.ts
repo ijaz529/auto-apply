@@ -3,49 +3,10 @@ import { getUserId } from "@/lib/guest"
 import { prisma } from "@/lib/db"
 import {
   scanPortals,
-  type CompanyConfig,
   type TitleFilterConfig,
   type JobResult,
 } from "@/lib/scanner"
-
-const PRESET_COMPANIES: CompanyConfig[] = [
-  { name: "Raisin", careers_url: "https://job-boards.eu.greenhouse.io/raisin" },
-  { name: "N26", careers_url: "https://job-boards.greenhouse.io/n26" },
-  {
-    name: "Trade Republic",
-    careers_url: "https://job-boards.greenhouse.io/traderepublicbank",
-  },
-  { name: "SumUp", careers_url: "https://job-boards.greenhouse.io/sumup" },
-  { name: "Adyen", careers_url: "https://job-boards.greenhouse.io/adyen" },
-  { name: "Stripe", careers_url: "https://job-boards.greenhouse.io/stripe" },
-  { name: "Bolt", careers_url: "https://job-boards.greenhouse.io/boltv2" },
-  {
-    name: "GetYourGuide",
-    careers_url: "https://job-boards.greenhouse.io/getyourguide",
-  },
-  {
-    name: "HelloFresh",
-    careers_url: "https://job-boards.greenhouse.io/hellofresh",
-  },
-  { name: "Wolt", careers_url: "https://job-boards.greenhouse.io/wolt" },
-  {
-    name: "Contentful",
-    careers_url: "https://job-boards.greenhouse.io/contentful",
-  },
-  { name: "Celonis", careers_url: "https://job-boards.greenhouse.io/celonis" },
-  {
-    name: "Databricks",
-    careers_url: "https://job-boards.greenhouse.io/databricks",
-  },
-  {
-    name: "Doctolib",
-    careers_url: "https://job-boards.greenhouse.io/doctolib",
-  },
-  { name: "Careem", careers_url: "https://boards.greenhouse.io/careem" },
-  { name: "Pleo", careers_url: "https://jobs.ashbyhq.com/pleo" },
-  { name: "Forto", careers_url: "https://jobs.ashbyhq.com/forto" },
-  { name: "Spotify", careers_url: "https://jobs.lever.co/spotify" },
-]
+import { ALL_PORTALS } from "@/lib/scanner/portals"
 
 // ── Seniority detection ───────────────────────────────────────────
 
@@ -269,42 +230,6 @@ function scoreRelevance(job: JobResult, signals: JobSignals): number {
   return maxScore > 0 ? Math.round((score / maxScore) * 100) : 50
 }
 
-// ── Fallback: build filter from preferences string (legacy) ───────
-
-function buildFilterFromPreferences(preferences: string): TitleFilterConfig {
-  const tokens = preferences
-    .toLowerCase()
-    .split(/[,;|]+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length > 2)
-
-  const roleKeywords = [
-    "product", "operations", "manager", "engineer", "developer",
-    "designer", "analyst", "lead", "senior", "director", "head",
-    "principal", "staff", "data", "marketing", "sales", "devops",
-    "sre", "backend", "frontend", "fullstack", "full-stack",
-    "mobile", "cloud", "security", "qa", "project", "program",
-    "strategy", "growth", "content", "ux", "ui", "research",
-    "science", "machine learning", "ml", "ai", "payments",
-    "compliance", "risk",
-  ]
-
-  const positive: string[] = []
-  for (const token of tokens) {
-    const words = token.split(/\s+/)
-    for (const word of words) {
-      if (roleKeywords.includes(word) && !positive.includes(word)) {
-        positive.push(word)
-      }
-    }
-    if (token.split(/\s+/).length >= 2 && !positive.includes(token)) {
-      positive.push(token)
-    }
-  }
-
-  return { positive, negative: [...NEGATIVE_SENIORITY] }
-}
-
 // ── POST handler ──────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -374,7 +299,7 @@ export async function POST(req: NextRequest) {
     })
     const existingUrls = new Set(existingJobs.map((j) => j.url))
 
-    const summary = await scanPortals(PRESET_COMPANIES, titleFilter, existingUrls)
+    const summary = await scanPortals(ALL_PORTALS, titleFilter, existingUrls)
 
     const scoredJobs = summary.newJobs
       .map((job) => ({ ...job, relevance: scoreRelevance(job, signals) }))
