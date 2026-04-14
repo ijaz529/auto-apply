@@ -89,6 +89,7 @@ export default function JobsPage() {
     signalsUsed?: { domains: string[]; seniority: string[]; locations: string[] }
   } | null>(null)
   const [discoverError, setDiscoverError] = useState<string | null>(null)
+  const [discoverVisible, setDiscoverVisible] = useState(10)
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -207,6 +208,7 @@ export default function JobsPage() {
     setDiscoverJobs([])
     setDiscoverMeta(null)
     setDiscoverError(null)
+    setDiscoverVisible(10)
     try {
       const res = await fetch("/api/jobs/discover", {
         method: "POST",
@@ -386,7 +388,7 @@ export default function JobsPage() {
       )}
       {discoverJobs.length > 0 && (
         <div className="space-y-1">
-          {discoverJobs.map((dj) => (
+          {discoverJobs.slice(0, discoverVisible).map((dj) => (
             <div
               key={dj.url}
               className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"
@@ -428,6 +430,16 @@ export default function JobsPage() {
               </div>
             </div>
           ))}
+          {discoverVisible < discoverJobs.length && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => setDiscoverVisible((v) => v + 10)}
+            >
+              Show more ({discoverJobs.length - discoverVisible} remaining)
+            </Button>
+          )}
         </div>
       )}
 

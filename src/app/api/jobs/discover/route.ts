@@ -213,33 +213,40 @@ function scoreRelevance(job: JobResult, signals: CVSignals): number {
   const lower = job.title.toLowerCase()
   const locLower = job.location.toLowerCase()
   let score = 0
+  let maxPossible = 0
 
   // Domain match (40 pts) — does the title contain domain terms from CV?
-  const domainMatches = signals.domains.filter((d) => lower.includes(d))
-  if (domainMatches.length >= 2) score += 40
-  else if (domainMatches.length === 1) score += 25
+  if (signals.domains.length > 0) {
+    maxPossible += 40
+    const domainMatches = signals.domains.filter((d) => lower.includes(d))
+    if (domainMatches.length >= 2) score += 40
+    else if (domainMatches.length === 1) score += 25
+  }
 
   // Role keyword overlap (25 pts)
-  const roleMatches = signals.roleTitles.filter((r) => lower.includes(r))
-  const roleRatio = Math.min(roleMatches.length / Math.min(signals.roleTitles.length, 4), 1)
-  score += Math.round(roleRatio * 25)
+  if (signals.roleTitles.length > 0) {
+    maxPossible += 25
+    const roleMatches = signals.roleTitles.filter((r) => lower.includes(r))
+    const roleRatio = Math.min(roleMatches.length / Math.min(signals.roleTitles.length, 4), 1)
+    score += Math.round(roleRatio * 25)
+  }
 
   // Seniority match (15 pts)
+  maxPossible += 15
   if (signals.seniority.length > 0) {
-    const titleLower = lower
     for (const s of signals.seniority) {
       const keywords = SENIORITY_KEYWORDS[s]
-      if (keywords?.some((k) => titleLower.includes(k))) {
+      if (keywords?.some((k) => lower.includes(k))) {
         score += 15
         break
       }
     }
   } else {
-    // No seniority signal, partial credit if not junior
     if (!NEGATIVE_TITLES.some((n) => lower.includes(n))) score += 8
   }
 
   // Location match (20 pts)
+  maxPossible += 20
   if (signals.locations.length === 0) {
     score += 10
   } else {
@@ -247,7 +254,9 @@ function scoreRelevance(job: JobResult, signals: CVSignals): number {
     else if (locLower.includes("remote")) score += 12
   }
 
-  return Math.min(score, 100)
+  // Normalize to 0-100 based on what dimensions we actually have
+  if (maxPossible === 0) return 50
+  return Math.round((score / maxPossible) * 100)
 }
 
 // ── Parse preferences string ──────────────────────────────────────
@@ -384,7 +393,7 @@ export async function POST(req: NextRequest) {
     const scoredJobs = summary.newJobs
       .map((job) => ({ ...job, relevance: scoreRelevance(job, signals) }))
       .sort((a, b) => (b.relevance ?? 0) - (a.relevance ?? 0))
-      .slice(0, 30)
+      .slice(0, 50)
 
     return NextResponse.json({
       jobs: scoredJobs,
