@@ -393,7 +393,7 @@ export async function POST(req: NextRequest) {
     const scoredJobs = summary.newJobs
       .map((job) => ({ ...job, relevance: scoreRelevance(job, signals) }))
       .sort((a, b) => (b.relevance ?? 0) - (a.relevance ?? 0))
-      .slice(0, 50)
+      .slice(0, 300)
 
     return NextResponse.json({
       jobs: scoredJobs,

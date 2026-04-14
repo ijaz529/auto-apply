@@ -219,7 +219,7 @@ export default function CVPage() {
               variant="outline"
               size="sm"
               className="w-full"
-              onClick={() => setDiscoverVisible((v) => v + 10)}
+              onClick={() => setDiscoverVisible((v) => v + 20)}
             >
               Show more ({discoverJobs.length - discoverVisible} remaining)
             </Button>
