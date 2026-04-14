@@ -389,8 +389,34 @@ export async function POST(req: NextRequest) {
     // Scan ALL portals (60+)
     const summary = await scanPortals(ALL_PORTALS, titleFilter, existingUrls)
 
+    // Hard filter by location if user specified one in preferences
+    let filteredByLocation = summary.newJobs
+    let locationFilteredCount = 0
+    if (parsedPrefs && parsedPrefs.locations.length > 0) {
+      const wantLocations = parsedPrefs.locations
+      const wantsRemote = parsedPrefs.workType.includes("remote")
+      filteredByLocation = summary.newJobs.filter((job) => {
+        const loc = job.location.toLowerCase()
+        const matchesLocation = wantLocations.some((l) => loc.includes(l))
+        if (matchesLocation) return true
+        // Accept remote jobs only if user explicitly asked for remote
+        if (wantsRemote) {
+          return loc.includes("remote") || loc.includes("anywhere") || loc.includes("global") || loc === ""
+        }
+        return false
+      })
+      locationFilteredCount = summary.newJobs.length - filteredByLocation.length
+    } else if (parsedPrefs && parsedPrefs.workType.includes("remote")) {
+      // User wants remote jobs, no specific location
+      filteredByLocation = summary.newJobs.filter((job) => {
+        const loc = job.location.toLowerCase()
+        return loc.includes("remote") || loc.includes("anywhere") || loc.includes("global") || loc === ""
+      })
+      locationFilteredCount = summary.newJobs.length - filteredByLocation.length
+    }
+
     // Score and rank
-    const scoredJobs = summary.newJobs
+    const scoredJobs = filteredByLocation
       .map((job) => ({ ...job, relevance: scoreRelevance(job, signals) }))
       .sort((a, b) => (b.relevance ?? 0) - (a.relevance ?? 0))
       .slice(0, 300)
@@ -401,6 +427,7 @@ export async function POST(req: NextRequest) {
         companiesScanned: summary.companiesScanned,
         totalJobsFound: summary.totalJobsFound,
         filteredByTitle: summary.filteredByTitle,
+        filteredByLocation: locationFilteredCount,
         duplicatesSkipped: summary.duplicatesSkipped,
         errors: summary.errors,
         signalsUsed: {
