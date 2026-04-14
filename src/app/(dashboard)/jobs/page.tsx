@@ -396,25 +396,32 @@ export default function JobsPage() {
                           )}
 
                           {/* Actions */}
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={cvDownloading === job.id}
-                              onClick={() => handleDownloadCV(job.id, job.company)}
-                            >
-                              {cvDownloading === job.id
-                                ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                                : <Download className="mr-1.5 h-3.5 w-3.5" />}
-                              Tailored CV
-                            </Button>
-                            {job.url && !job.url.startsWith("pasted-") && (
-                              <a href={job.url} target="_blank" rel="noopener noreferrer">
-                                <Button size="sm">
-                                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-                                  Apply
-                                </Button>
-                              </a>
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={cvDownloading === job.id}
+                                onClick={() => handleDownloadCV(job.id, job.company)}
+                              >
+                                {cvDownloading === job.id
+                                  ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                                  : <Download className="mr-1.5 h-3.5 w-3.5" />}
+                                Tailored CV
+                              </Button>
+                              {job.url && !job.url.startsWith("pasted-") && (
+                                <a href={job.url} target="_blank" rel="noopener noreferrer">
+                                  <Button size="sm">
+                                    <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                                    Apply
+                                  </Button>
+                                </a>
+                              )}
+                            </div>
+                            {job.evaluation.keywords && job.evaluation.keywords.length > 0 && (
+                              <p className="text-xs text-muted-foreground">
+                                CV optimized for <span className="font-medium">{job.evaluation.archetype}</span> role with ATS keywords: {(job.evaluation.keywords as string[]).slice(0, 8).join(", ")}{(job.evaluation.keywords as string[]).length > 8 ? "..." : ""}
+                              </p>
                             )}
                           </div>
 
