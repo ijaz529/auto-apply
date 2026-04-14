@@ -9,6 +9,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Plus,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,8 +38,10 @@ export default function CVPage() {
     signalsUsed?: { domains: string[]; seniority: string[]; locations: string[] }
   } | null>(null)
   const [discoverError, setDiscoverError] = useState<string | null>(null)
-  const [discoverVisible, setDiscoverVisible] = useState(10)
   const [addingJobUrl, setAddingJobUrl] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [groupBy, setGroupBy] = useState<"none" | "company" | "location">("none")
+  const PAGE_SIZE = 15
 
   useEffect(() => {
     fetch("/api/profile")
@@ -68,7 +72,7 @@ export default function CVPage() {
     setDiscoverJobs([])
     setDiscoverMeta(null)
     setDiscoverError(null)
-    setDiscoverVisible(10)
+    setPage(1)
     try {
       const res = await fetch("/api/jobs/discover", {
         method: "POST",
@@ -170,62 +174,143 @@ export default function CVPage() {
         </div>
       )}
 
-      {discoverJobs.length > 0 && (
-        <div className="space-y-1">
-          {discoverJobs.slice(0, discoverVisible).map((dj) => (
-            <div
-              key={dj.url}
-              className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {dj.relevance != null && (
-                    <span className={`inline-flex items-center justify-center h-5 min-w-[2rem] px-1 rounded text-xs font-bold ${
-                      dj.relevance >= 70 ? "bg-green-100 text-green-800" :
-                      dj.relevance >= 40 ? "bg-amber-100 text-amber-800" :
-                      "bg-gray-100 text-gray-600"
-                    }`}>
-                      {dj.relevance}%
-                    </span>
-                  )}
-                  <span className="font-medium">{dj.company}</span>
-                  <span className="text-muted-foreground">{dj.title}</span>
-                </div>
-                {dj.location && (
-                  <p className="text-xs text-muted-foreground mt-0.5">{dj.location}</p>
-                )}
+      {discoverJobs.length > 0 && renderResults()}
+    </div>
+  )
+
+  // ── Render results (grouped or paginated) ──────────────────────
+  function renderResults() {
+    // Group-by controls
+    const controls = (
+      <div className="flex items-center gap-2 text-xs">
+        <span className="text-muted-foreground">Group by:</span>
+        {(["none", "company", "location"] as const).map((g) => (
+          <button
+            key={g}
+            onClick={() => { setGroupBy(g); setPage(1) }}
+            className={`px-2 py-0.5 rounded capitalize ${
+              groupBy === g
+                ? "bg-primary text-primary-foreground font-medium"
+                : "bg-muted hover:bg-muted/70"
+            }`}
+          >
+            {g === "none" ? "None" : g}
+          </button>
+        ))}
+      </div>
+    )
+
+    // Job row component
+    const jobRow = (dj: DiscoverJob) => (
+      <div
+        key={dj.url}
+        className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            {dj.relevance != null && (
+              <span className={`inline-flex items-center justify-center h-5 min-w-[2rem] px-1 rounded text-xs font-bold ${
+                dj.relevance >= 70 ? "bg-green-100 text-green-800" :
+                dj.relevance >= 40 ? "bg-amber-100 text-amber-800" :
+                "bg-gray-100 text-gray-600"
+              }`}>
+                {dj.relevance}%
+              </span>
+            )}
+            {groupBy !== "company" && <span className="font-medium">{dj.company}</span>}
+            <span className="text-muted-foreground">{dj.title}</span>
+          </div>
+          {dj.location && groupBy !== "location" && (
+            <p className="text-xs text-muted-foreground mt-0.5">{dj.location}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <a href={dj.url} target="_blank" rel="noopener noreferrer">
+            <Button variant="ghost" size="sm"><ExternalLink className="h-3.5 w-3.5" /></Button>
+          </a>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={addingJobUrl === dj.url}
+            onClick={() => handleAddDiscoverJob(dj.url)}
+            title="Add to Jobs tab for evaluation"
+          >
+            {addingJobUrl === dj.url
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <Plus className="h-3.5 w-3.5" />
+            }
+          </Button>
+        </div>
+      </div>
+    )
+
+    // GROUPED VIEW — all groups visible, each with its members (no pagination inside)
+    if (groupBy !== "none") {
+      const groups = new Map<string, DiscoverJob[]>()
+      for (const j of discoverJobs) {
+        const key = groupBy === "company" ? j.company : (j.location || "Unspecified")
+        if (!groups.has(key)) groups.set(key, [])
+        groups.get(key)!.push(j)
+      }
+      // Sort groups by size (largest first), alphabetically for ties
+      const sortedGroups = [...groups.entries()].sort((a, b) => {
+        if (b[1].length !== a[1].length) return b[1].length - a[1].length
+        return a[0].localeCompare(b[0])
+      })
+
+      return (
+        <div className="space-y-4">
+          {controls}
+          {sortedGroups.map(([key, items]) => (
+            <div key={key} className="space-y-1">
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-sm">{key}</h3>
+                <Badge variant="outline" className="text-xs">{items.length}</Badge>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <a href={dj.url} target="_blank" rel="noopener noreferrer">
-                  <Button variant="ghost" size="sm"><ExternalLink className="h-3.5 w-3.5" /></Button>
-                </a>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={addingJobUrl === dj.url}
-                  onClick={() => handleAddDiscoverJob(dj.url)}
-                  title="Add to Jobs tab for evaluation"
-                >
-                  {addingJobUrl === dj.url
-                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    : <Plus className="h-3.5 w-3.5" />
-                  }
-                </Button>
-              </div>
+              {items.map(jobRow)}
             </div>
           ))}
-          {discoverVisible < discoverJobs.length && (
+        </div>
+      )
+    }
+
+    // PAGINATED VIEW
+    const totalPages = Math.max(1, Math.ceil(discoverJobs.length / PAGE_SIZE))
+    const start = (page - 1) * PAGE_SIZE
+    const visible = discoverJobs.slice(start, start + PAGE_SIZE)
+
+    return (
+      <div className="space-y-2">
+        {controls}
+        <div className="space-y-1">
+          {visible.map(jobRow)}
+        </div>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-2">
             <Button
               variant="outline"
               size="sm"
-              className="w-full"
-              onClick={() => setDiscoverVisible((v) => v + 20)}
+              disabled={page === 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
-              Show more ({discoverJobs.length - discoverVisible} remaining)
+              <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+              Prev
             </Button>
-          )}
-        </div>
-      )}
-    </div>
-  )
+            <span className="text-xs text-muted-foreground">
+              Page {page} of {totalPages} · {discoverJobs.length} jobs
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Next
+              <ChevronRight className="ml-1 h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
+      </div>
+    )
+  }
 }
