@@ -20,7 +20,7 @@ export default function DashboardLayout({
     <div className="min-h-screen bg-background">
       <header className="border-b">
         <div className="max-w-2xl mx-auto flex h-14 items-center justify-between px-4">
-          <Link href="/jobs" className="flex items-center gap-2">
+          <Link href="/cv" className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
               AA
             </div>
@@ -53,6 +53,17 @@ export default function DashboardLayout({
       </header>
       <nav className="border-b">
         <div className="max-w-2xl mx-auto flex px-4">
+          <Link
+            href="/cv"
+            className={cn(
+              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              pathname.startsWith("/cv")
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            CV
+          </Link>
           <Link
             href="/jobs"
             className={cn(
