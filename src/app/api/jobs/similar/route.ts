@@ -312,54 +312,60 @@ export async function POST(req: NextRequest) {
     const userId = await getUserId()
 
     const body = await req.json().catch(() => ({}))
-    const { preferences } = body as { preferences?: string }
+    const { jobId } = body as { jobId?: string }
 
-    // Load user's evaluated jobs to extract signals
-    const userJobs = await prisma.job.findMany({
-      where: { userId },
-      select: {
-        role: true,
-        location: true,
-        evaluation: {
-          select: {
-            archetype: true,
-            keywords: true,
-          },
+    // Load the specific job (or all evaluated jobs as fallback)
+    let targetJobs: Array<{
+      role: string
+      location: string | null
+      evaluation: { archetype: string | null; keywords: string[] | null } | null
+    }>
+
+    if (jobId) {
+      const job = await prisma.job.findFirst({
+        where: { id: jobId, userId },
+        select: {
+          role: true,
+          location: true,
+          evaluation: { select: { archetype: true, keywords: true } },
         },
-      },
-    })
-
-    const evaluatedJobs = userJobs.filter((j) => j.evaluation)
-
-    // Build filter: prefer signals from evaluated jobs, fallback to preferences
-    let titleFilter: TitleFilterConfig
-    let signals: JobSignals | null = null
-
-    if (evaluatedJobs.length > 0) {
-      signals = extractSignals(
-        evaluatedJobs.map((j) => ({
-          ...j,
-          evaluation: j.evaluation
-            ? {
-                archetype: j.evaluation.archetype,
-                keywords: (j.evaluation.keywords as string[] | null),
-              }
-            : null,
-        }))
-      )
-      titleFilter = buildSmartFilter(signals)
-    } else {
-      // Fallback: use preferences string (legacy behavior)
-      const profile = await prisma.profile.findUnique({
-        where: { userId },
       })
-      const effectivePreferences =
-        preferences ||
-        profile?.preferences ||
-        ((profile?.targetRoles as string[] | null) ?? []).join(", ") ||
-        ""
-      titleFilter = buildFilterFromPreferences(effectivePreferences)
+      if (!job?.evaluation) {
+        return NextResponse.json({ error: "Job not found or not evaluated" }, { status: 404 })
+      }
+      targetJobs = [{
+        ...job,
+        evaluation: {
+          archetype: job.evaluation.archetype,
+          keywords: job.evaluation.keywords as string[] | null,
+        },
+      }]
+    } else {
+      const userJobs = await prisma.job.findMany({
+        where: { userId },
+        select: {
+          role: true,
+          location: true,
+          evaluation: { select: { archetype: true, keywords: true } },
+        },
+      })
+      targetJobs = userJobs
+        .filter((j) => j.evaluation)
+        .map((j) => ({
+          ...j,
+          evaluation: {
+            archetype: j.evaluation!.archetype,
+            keywords: j.evaluation!.keywords as string[] | null,
+          },
+        }))
     }
+
+    if (targetJobs.length === 0) {
+      return NextResponse.json({ jobs: [], meta: { companiesScanned: 0, totalJobsFound: 0 } })
+    }
+
+    const signals = extractSignals(targetJobs)
+    const titleFilter = buildSmartFilter(signals)
 
     // Get existing job URLs to skip duplicates
     const existingJobs = await prisma.job.findMany({
@@ -368,54 +374,30 @@ export async function POST(req: NextRequest) {
     })
     const existingUrls = new Set(existingJobs.map((j) => j.url))
 
-    // Scan preset companies
-    const summary = await scanPortals(
-      PRESET_COMPANIES,
-      titleFilter,
-      existingUrls
-    )
+    const summary = await scanPortals(PRESET_COMPANIES, titleFilter, existingUrls)
 
-    // Score each result
-    let scoredJobs: JobResult[]
-    if (signals) {
-      scoredJobs = summary.newJobs
-        .map((job) => ({
-          ...job,
-          relevance: scoreRelevance(job, signals!),
-        }))
-        .sort((a, b) => (b.relevance ?? 0) - (a.relevance ?? 0))
-    } else {
-      scoredJobs = summary.newJobs
-    }
-
-    // Return top 30 results (more than before since they're ranked)
-    const topJobs = scoredJobs.slice(0, 30)
+    const scoredJobs = summary.newJobs
+      .map((job) => ({ ...job, relevance: scoreRelevance(job, signals) }))
+      .sort((a, b) => (b.relevance ?? 0) - (a.relevance ?? 0))
+      .slice(0, 20)
 
     return NextResponse.json({
-      jobs: topJobs,
+      jobs: scoredJobs,
       meta: {
         companiesScanned: summary.companiesScanned,
         totalJobsFound: summary.totalJobsFound,
         filteredByTitle: summary.filteredByTitle,
         duplicatesSkipped: summary.duplicatesSkipped,
         errors: summary.errors,
-        titleFilter,
-        signalsUsed: signals
-          ? {
-              archetypes: signals.archetypes,
-              seniority: signals.seniority,
-              locations: signals.locations,
-              roleKeywordCount: signals.roleKeywords.length,
-            }
-          : null,
-        source: signals ? "evaluated_jobs" : "preferences",
+        signalsUsed: {
+          archetypes: signals.archetypes,
+          seniority: signals.seniority,
+          locations: signals.locations,
+        },
       },
     })
   } catch (error) {
     console.error("Similar jobs scan error:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
