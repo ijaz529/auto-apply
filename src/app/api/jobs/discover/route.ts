@@ -335,6 +335,18 @@ export async function POST(req: NextRequest) {
 
     const signals = extractCVSignals(cv, profile.location)
 
+    // If CV structured data yielded no domains, scan raw CV markdown for keywords
+    if (signals.domains.length === 0 && profile.cvMarkdown) {
+      const rawLower = profile.cvMarkdown.toLowerCase()
+      for (const [keyword, titleTerms] of Object.entries(DOMAIN_TO_TITLE)) {
+        if (rawLower.includes(keyword)) {
+          for (const term of titleTerms) {
+            if (!signals.domains.includes(term)) signals.domains.push(term)
+          }
+        }
+      }
+    }
+
     // Merge user preferences into signals
     let parsedPrefs: ParsedPreferences | null = null
     if (preferences?.trim()) {
@@ -355,12 +367,8 @@ export async function POST(req: NextRequest) {
 
     const titleFilter = buildCVFilter(signals)
 
-    if (titleFilter.positive.length === 0) {
-      return NextResponse.json(
-        { error: "Could not extract search signals from CV. Try adding more details to your work experience." },
-        { status: 400 }
-      )
-    }
+    // If no positive filter from CV, run a broad scan (all jobs pass, ranked by relevance)
+    // This is fine — the relevance scoring will still rank results
 
     // Get existing job URLs to skip duplicates
     const existingJobs = await prisma.job.findMany({
