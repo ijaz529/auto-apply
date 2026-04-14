@@ -62,11 +62,12 @@ export function renderBasicResume(
   if (cv.summary) {
     lines.push(`== Professional Summary`)
     lines.push("")
-    // If we have keywords, weave them in as a parenthetical
+    lines.push(esc(cv.summary))
     if (keywords && keywords.length > 0) {
-      lines.push(esc(cv.summary))
-    } else {
-      lines.push(esc(cv.summary))
+      // Append a keyword-rich line to boost ATS matching
+      const topKw = keywords.slice(0, 8).map((k) => esc(k)).join(", ")
+      lines.push("")
+      lines.push(`Core expertise: ${topKw}.`)
     }
     lines.push("")
   }
@@ -157,14 +158,27 @@ export function renderBasicResume(
   }
 
   // Skills
-  if (cv.skills.length > 0) {
+  if (cv.skills.length > 0 || (keywords && keywords.length > 0)) {
     lines.push(`== Skills`)
     lines.push("")
-    for (const s of cv.skills) {
+    for (const s of (cv.skills || [])) {
       lines.push(
         `*${esc(s.category)}:* ${s.items.map((i) => esc(i)).join(", ")}`
       )
       lines.push("")
+    }
+    // Add job-specific keywords as a separate row, deduped against existing skills
+    if (keywords && keywords.length > 0) {
+      const existingLower = new Set(
+        (cv.skills || []).flatMap((s) => s.items.map((i) => i.toLowerCase()))
+      )
+      const unique = keywords.filter((k) => !existingLower.has(k.toLowerCase()))
+      if (unique.length > 0) {
+        lines.push(
+          `*Key Competencies:* ${unique.slice(0, 12).map((k) => esc(k)).join(", ")}`
+        )
+        lines.push("")
+      }
     }
   }
 

@@ -112,6 +112,22 @@ export function renderAttractiveResume(
     }
   }
 
+  // Job-specific keywords in sidebar
+  if (keywords && keywords.length > 0) {
+    const existingLower = new Set(
+      (cv.skills || []).flatMap((s) => s.items.map((i) => i.toLowerCase()))
+    )
+    const unique = keywords.filter((k) => !existingLower.has(k.toLowerCase()))
+    if (unique.length > 0) {
+      sidebarParts.push(`    v(0.6em)`)
+      sidebarParts.push(`    text(size: 11pt, weight: "bold", fill: white)[Key Competencies]`)
+      sidebarParts.push(`    v(0.3em)`)
+      sidebarParts.push(
+        `    text(size: 8pt, fill: rgb("#cccccc"))[${unique.slice(0, 12).map((k) => esc(k)).join(", ")}]`
+      )
+    }
+  }
+
   // Certifications in sidebar
   if (cv.certifications.length > 0) {
     sidebarParts.push(`    v(0.6em)`)
@@ -179,6 +195,11 @@ export function renderAttractiveResume(
   if (cv.summary) {
     lines.push(`    #section("Professional Summary")`)
     lines.push(`    #text(size: 9.5pt)[${esc(cv.summary)}]`)
+    if (keywords && keywords.length > 0) {
+      const topKw = keywords.slice(0, 8).map((k) => esc(k)).join(", ")
+      lines.push(`    #v(0.2em)`)
+      lines.push(`    #text(size: 9pt, fill: luma(60))[Core expertise: ${topKw}.]`)
+    }
     lines.push("")
   }
 
