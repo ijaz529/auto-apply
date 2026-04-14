@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
@@ -63,6 +64,7 @@ export default function JobsPage() {
   const [hasCV, setHasCV] = useState<boolean | null>(null)
   const [cvUploading, setCvUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [preferences, setPreferences] = useState("")
 
   const [urls, setUrls] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -209,6 +211,7 @@ export default function JobsPage() {
       const res = await fetch("/api/jobs/discover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preferences: preferences || undefined }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -317,6 +320,14 @@ export default function JobsPage() {
 
   return (
     <div className="space-y-6">
+
+      {/* Preferences */}
+      <Input
+        placeholder="Remote jobs in Berlin, salary above EUR 75k, product ops..."
+        value={preferences}
+        onChange={(e) => setPreferences(e.target.value)}
+        className="text-sm"
+      />
 
       {/* CV Upload + Discover */}
       <div className="flex items-center gap-3 flex-wrap">

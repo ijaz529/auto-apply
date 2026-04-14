@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { getUserId } from "@/lib/guest"
 import { prisma } from "@/lib/db"
 import {
@@ -7,7 +7,7 @@ import {
   type JobResult,
 } from "@/lib/scanner"
 import { ALL_PORTALS } from "@/lib/scanner/portals"
-import type { CVData, WorkEntry, SkillCategory } from "@/types"
+import type { CVData } from "@/types"
 
 // ── CV Signal Extraction ──────────────────────────────────────────
 
@@ -250,11 +250,68 @@ function scoreRelevance(job: JobResult, signals: CVSignals): number {
   return Math.min(score, 100)
 }
 
+// ── Parse preferences string ──────────────────────────────────────
+
+interface ParsedPreferences {
+  locations: string[]
+  workType: string[]     // remote, hybrid, onsite
+  keywords: string[]     // extra role/domain keywords
+}
+
+function parsePreferences(text: string): ParsedPreferences {
+  const lower = text.toLowerCase()
+  const locations: string[] = []
+  const workType: string[] = []
+  const keywords: string[] = []
+
+  // Detect work type
+  if (lower.includes("remote")) workType.push("remote")
+  if (lower.includes("hybrid")) workType.push("hybrid")
+  if (lower.includes("onsite") || lower.includes("on-site") || lower.includes("on site")) workType.push("onsite")
+
+  // Extract known cities/regions
+  const knownLocations = [
+    "berlin", "munich", "hamburg", "frankfurt", "cologne", "düsseldorf",
+    "dubai", "abu dhabi", "riyadh", "doha",
+    "london", "paris", "amsterdam", "barcelona", "madrid", "lisbon",
+    "stockholm", "copenhagen", "oslo", "helsinki", "vienna", "zurich",
+    "new york", "san francisco", "austin", "seattle", "chicago", "boston",
+    "singapore", "tokyo", "sydney", "toronto", "montreal",
+    "germany", "uae", "uk", "spain", "france", "netherlands", "sweden",
+    "europe", "mena", "apac",
+  ]
+  for (const loc of knownLocations) {
+    if (lower.includes(loc)) locations.push(loc)
+  }
+
+  // Extract extra keywords (split on common delimiters, skip filler)
+  const filler = new Set([
+    "jobs", "job", "in", "with", "salary", "above", "below", "over", "under",
+    "remote", "hybrid", "onsite", "on-site", "the", "and", "for", "or", "a",
+    "an", "aed", "eur", "usd", "gbp", "per", "month", "year", "annual",
+    ...knownLocations,
+  ])
+  const tokens = lower
+    .replace(/[€$£]/g, "")
+    .split(/[,;/|]+/)
+    .flatMap((s) => s.trim().split(/\s+/))
+    .filter((t) => t.length > 2 && !filler.has(t) && !/^\d+k?$/.test(t))
+
+  for (const t of tokens) {
+    if (!keywords.includes(t)) keywords.push(t)
+  }
+
+  return { locations, workType, keywords }
+}
+
 // ── POST handler ──────────────────────────────────────────────────
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
     const userId = await getUserId()
+
+    const body = await req.json().catch(() => ({}))
+    const { preferences } = body as { preferences?: string }
 
     // Load profile with structured CV
     const profile = await prisma.profile.findUnique({
@@ -275,10 +332,29 @@ export async function POST() {
         { status: 400 }
       )
     }
+
     const signals = extractCVSignals(cv, profile.location)
+
+    // Merge user preferences into signals
+    let parsedPrefs: ParsedPreferences | null = null
+    if (preferences?.trim()) {
+      parsedPrefs = parsePreferences(preferences)
+      // Override locations if user specified them
+      if (parsedPrefs.locations.length > 0) {
+        signals.locations = parsedPrefs.locations
+      }
+      // Add work type to locations for matching
+      for (const wt of parsedPrefs.workType) {
+        if (!signals.locations.includes(wt)) signals.locations.push(wt)
+      }
+      // Add extra keywords to domains
+      for (const kw of parsedPrefs.keywords) {
+        if (!signals.domains.includes(kw)) signals.domains.push(kw)
+      }
+    }
+
     const titleFilter = buildCVFilter(signals)
 
-    // Skip if no positive keywords extracted
     if (titleFilter.positive.length === 0) {
       return NextResponse.json(
         { error: "Could not extract search signals from CV. Try adding more details to your work experience." },
@@ -317,6 +393,11 @@ export async function POST() {
           roleTitleCount: signals.roleTitles.length,
           skillCount: signals.skills.length,
         },
+        preferencesApplied: parsedPrefs ? {
+          locations: parsedPrefs.locations,
+          workType: parsedPrefs.workType,
+          extraKeywords: parsedPrefs.keywords,
+        } : null,
       },
     })
   } catch (error) {
