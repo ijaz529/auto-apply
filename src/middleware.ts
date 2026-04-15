@@ -16,10 +16,11 @@ export function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // Everything except /cv, /jobs, /settings redirects to /cv
+  // Everything except /cv, /jobs, /applications, /settings redirects to /cv
   if (
     pathname !== "/cv" && !pathname.startsWith("/cv/") &&
     pathname !== "/jobs" && !pathname.startsWith("/jobs/") &&
+    pathname !== "/applications" && !pathname.startsWith("/applications/") &&
     pathname !== "/settings" && !pathname.startsWith("/settings/")
   ) {
     return NextResponse.redirect(new URL("/cv", req.nextUrl.origin))
