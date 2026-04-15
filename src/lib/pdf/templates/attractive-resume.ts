@@ -23,9 +23,21 @@ function esc(text: string): string {
  * Features: accent-colored sidebar, clean typography, two-column layout.
  */
 export function renderAttractiveResume(
-  cv: CVData,
+  cvInput: CVData,
   keywords?: string[]
 ): string {
+  // Normalize: arrays can be missing/null in stored JSON despite the type
+  // saying they're required. Default them so `.length` and iteration are safe.
+  const cv: CVData = {
+    ...cvInput,
+    experience: cvInput.experience ?? [],
+    education: cvInput.education ?? [],
+    projects: cvInput.projects ?? [],
+    certifications: cvInput.certifications ?? [],
+    skills: cvInput.skills ?? [],
+    achievements: cvInput.achievements ?? [],
+  }
+
   const accent = "#4273B0"
 
   const lines: string[] = []
@@ -106,7 +118,7 @@ export function renderAttractiveResume(
       )
       sidebarParts.push(`    v(0.1em)`)
       sidebarParts.push(
-        `    text(size: 8pt, fill: rgb("#cccccc"))[${s.items.map((i) => esc(i)).join(", ")}]`
+        `    text(size: 8pt, fill: rgb("#cccccc"))[${(s.items ?? []).map((i) => esc(i)).join(", ")}]`
       )
       sidebarParts.push(`    v(0.2em)`)
     }
@@ -115,7 +127,7 @@ export function renderAttractiveResume(
   // Job-specific keywords in sidebar
   if (keywords && keywords.length > 0) {
     const existingLower = new Set(
-      (cv.skills || []).flatMap((s) => s.items.map((i) => i.toLowerCase()))
+      cv.skills.flatMap((s) => (s.items ?? []).map((i) => i.toLowerCase()))
     )
     const unique = keywords.filter((k) => !existingLower.has(k.toLowerCase()))
     if (unique.length > 0) {
@@ -214,7 +226,7 @@ export function renderAttractiveResume(
       lines.push(`      "${esc(subtitle)}",`)
       lines.push(`      "${esc(dates)}",`)
       lines.push(`    )[`)
-      for (const bullet of w.bullets) {
+      for (const bullet of w.bullets ?? []) {
         lines.push(`      - ${esc(bullet)}`)
       }
       lines.push(`    ]`)
@@ -233,7 +245,7 @@ export function renderAttractiveResume(
       lines.push(`      "${esc(subtitle)}",`)
       lines.push(`      "${esc(dates)}",`)
       lines.push(`    )[`)
-      for (const bullet of p.bullets) {
+      for (const bullet of p.bullets ?? []) {
         lines.push(`      - ${esc(bullet)}`)
       }
       lines.push(`    ]`)

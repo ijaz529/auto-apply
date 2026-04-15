@@ -33,9 +33,21 @@ function escStr(text: string): string {
  * Render a complete .typ file using @preview/basic-resume:0.2.9.
  */
 export function renderBasicResume(
-  cv: CVData,
+  cvInput: CVData,
   keywords?: string[]
 ): string {
+  // Normalize: arrays can be missing/null in stored JSON despite the type
+  // saying they're required. Default them so `.length` and iteration are safe.
+  const cv: CVData = {
+    ...cvInput,
+    experience: cvInput.experience ?? [],
+    education: cvInput.education ?? [],
+    projects: cvInput.projects ?? [],
+    certifications: cvInput.certifications ?? [],
+    skills: cvInput.skills ?? [],
+    achievements: cvInput.achievements ?? [],
+  }
+
   const lines: string[] = []
 
   // Package import
@@ -90,7 +102,7 @@ export function renderBasicResume(
       lines.push(workArgs.join("\n"))
       lines.push(`)`)
 
-      for (const bullet of w.bullets) {
+      for (const bullet of w.bullets ?? []) {
         lines.push(`- ${esc(bullet)}`)
       }
       lines.push("")
@@ -115,7 +127,7 @@ export function renderBasicResume(
       lines.push(projArgs.join("\n"))
       lines.push(`)`)
 
-      for (const bullet of p.bullets) {
+      for (const bullet of p.bullets ?? []) {
         lines.push(`- ${esc(bullet)}`)
       }
       lines.push("")
@@ -161,16 +173,16 @@ export function renderBasicResume(
   if (cv.skills.length > 0 || (keywords && keywords.length > 0)) {
     lines.push(`== Skills`)
     lines.push("")
-    for (const s of (cv.skills || [])) {
+    for (const s of cv.skills) {
       lines.push(
-        `*${esc(s.category)}:* ${s.items.map((i) => esc(i)).join(", ")}`
+        `*${esc(s.category)}:* ${(s.items ?? []).map((i) => esc(i)).join(", ")}`
       )
       lines.push("")
     }
     // Add job-specific keywords as a separate row, deduped against existing skills
     if (keywords && keywords.length > 0) {
       const existingLower = new Set(
-        (cv.skills || []).flatMap((s) => s.items.map((i) => i.toLowerCase()))
+        cv.skills.flatMap((s) => (s.items ?? []).map((i) => i.toLowerCase()))
       )
       const unique = keywords.filter((k) => !existingLower.has(k.toLowerCase()))
       if (unique.length > 0) {
