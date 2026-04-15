@@ -97,3 +97,47 @@ export async function PUT(
     )
   }
 }
+
+export async function PATCH(
+  req: NextRequest,
+  ctx: { params: Promise<{ id: string }> }
+) {
+  // Alias PATCH → PUT so the client can use either verb.
+  return PUT(req, ctx)
+}
+
+/**
+ * Delete an application (and the linked Job, since Job→Application is 1:1
+ * and Job exists to represent this tracked application).
+ */
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const userId = await getUserId()
+    const { id } = await params
+
+    const application = await prisma.application.findFirst({
+      where: { id, userId },
+      select: { id: true, jobId: true },
+    })
+    if (!application) {
+      return NextResponse.json(
+        { error: "Application not found" },
+        { status: 404 }
+      )
+    }
+
+    // Deleting Job cascades to Application via schema relation.
+    await prisma.job.delete({ where: { id: application.jobId } })
+
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error("Application delete error:", error)
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    )
+  }
+}

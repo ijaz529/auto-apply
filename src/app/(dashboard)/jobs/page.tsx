@@ -10,8 +10,10 @@ import {
   ChevronDown,
   ChevronUp,
   Plus,
+  CheckCircle2,
 } from "lucide-react"
 import Link from "next/link"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
@@ -70,6 +72,7 @@ export default function JobsPage() {
   const [expandedJob, setExpandedJob] = useState<string | null>(null)
 
   const [cvDownloading, setCvDownloading] = useState<string | null>(null)
+  const [markingApplied, setMarkingApplied] = useState<string | null>(null)
 
   // Similar jobs state per job ID
   const [similarByJob, setSimilarByJob] = useState<Record<string, SimilarState>>({})
@@ -161,17 +164,72 @@ export default function JobsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jobId }),
       })
-      if (res.ok) {
-        const blob = await res.blob()
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement("a")
-        a.href = url
-        a.download = `cv-${company.toLowerCase().replace(/\s+/g, "-")}.pdf`
-        a.click()
-        URL.revokeObjectURL(url)
+      if (!res.ok) {
+        let message = `CV generation failed (HTTP ${res.status})`
+        try {
+          const data = await res.json()
+          if (data?.error) message = data.error
+        } catch { /* response wasn't JSON */ }
+        toast.error(message)
+        return
       }
-    } catch { /* ignore */ } finally {
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `cv-${company.toLowerCase().replace(/\s+/g, "-")}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "CV generation request failed"
+      )
+    } finally {
       setCvDownloading(null)
+    }
+  }
+
+  async function handleMarkApplied(jobId: string) {
+    setMarkingApplied(jobId)
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmed: true }),
+      })
+      if (!res.ok) {
+        let message = `Failed to mark applied (HTTP ${res.status})`
+        try {
+          const data = await res.json()
+          if (data?.error) message = data.error
+        } catch { /* not JSON */ }
+        toast.error(message)
+        return
+      }
+      const data = await res.json().catch(() => ({}))
+      setJobs((prev) =>
+        prev.map((j) =>
+          j.id === jobId
+            ? {
+                ...j,
+                application: j.application
+                  ? { ...j.application, status: "applied" }
+                  : data.application
+                    ? {
+                        id: data.application.id,
+                        status: data.application.status,
+                        notes: data.application.notes ?? null,
+                      }
+                    : null,
+              }
+            : j
+        )
+      )
+      toast.success("Marked as applied")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Network error")
+    } finally {
+      setMarkingApplied(null)
     }
   }
 
@@ -388,6 +446,37 @@ export default function JobsPage() {
                                     Apply
                                   </Button>
                                 </a>
+                              )}
+                              {job.application?.status === "applied" ||
+                              job.application?.status === "responded" ||
+                              job.application?.status === "interview" ||
+                              job.application?.status === "offer" ||
+                              job.application?.status === "rejected" ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled
+                                  className="text-emerald-600"
+                                >
+                                  <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+                                  {job.application.status === "applied"
+                                    ? "Applied"
+                                    : `Applied · ${job.application.status}`}
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={markingApplied === job.id}
+                                  onClick={() => handleMarkApplied(job.id)}
+                                >
+                                  {markingApplied === job.id ? (
+                                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+                                  )}
+                                  Mark applied
+                                </Button>
                               )}
                             </div>
                             {job.evaluation.keywords && job.evaluation.keywords.length > 0 && (

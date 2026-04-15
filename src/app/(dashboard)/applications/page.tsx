@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
-import { Search, Briefcase, FileText } from "lucide-react"
+import { Briefcase, FileText, Plus, Trash2, Check, X, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -43,6 +45,7 @@ export default function ApplicationsPage() {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [addOpen, setAddOpen] = useState(false)
 
   const fetchApplications = useCallback(async () => {
     try {
@@ -50,9 +53,12 @@ export default function ApplicationsPage() {
       if (res.ok) {
         const data = await res.json()
         setApplications(data.applications ?? [])
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error ?? `Failed to load (HTTP ${res.status})`)
       }
-    } catch {
-      // silently fail
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Network error")
     } finally {
       setLoading(false)
     }
@@ -69,15 +75,58 @@ export default function ApplicationsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       })
-      if (res.ok) {
-        setApplications((prev) =>
-          prev.map((app) =>
-            app.id === appId ? { ...app, status: newStatus } : app
-          )
-        )
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error ?? `Update failed (HTTP ${res.status})`)
+        return
       }
-    } catch {
-      // silently fail
+      setApplications((prev) =>
+        prev.map((app) =>
+          app.id === appId ? { ...app, status: newStatus } : app
+        )
+      )
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Network error")
+    }
+  }
+
+  async function handleNotesSave(appId: string, notes: string) {
+    try {
+      const res = await fetch(`/api/applications/${appId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error ?? `Update failed (HTTP ${res.status})`)
+        return false
+      }
+      setApplications((prev) =>
+        prev.map((app) => (app.id === appId ? { ...app, notes } : app))
+      )
+      return true
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Network error")
+      return false
+    }
+  }
+
+  async function handleDelete(appId: string) {
+    if (!confirm("Delete this application? This cannot be undone.")) return
+    try {
+      const res = await fetch(`/api/applications/${appId}`, {
+        method: "DELETE",
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error ?? `Delete failed (HTTP ${res.status})`)
+        return
+      }
+      setApplications((prev) => prev.filter((a) => a.id !== appId))
+      toast.success("Application deleted")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Network error")
     }
   }
 
@@ -103,11 +152,17 @@ export default function ApplicationsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Applications</h1>
-        <p className="text-muted-foreground mt-1">
-          Track your application statuses and follow-ups.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Applied</h1>
+          <p className="text-muted-foreground mt-1">
+            Track your application statuses and follow-ups.
+          </p>
+        </div>
+        <Button onClick={() => setAddOpen(true)} size="sm">
+          <Plus className="mr-1.5 h-3.5 w-3.5" />
+          Add application
+        </Button>
       </div>
 
       {/* Stats Row */}
@@ -147,12 +202,10 @@ export default function ApplicationsPage() {
       {/* Filter Bar */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search by company, role, or notes..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
           />
         </div>
         <Select value={statusFilter} onValueChange={(val) => setStatusFilter(val ?? "all")}>
@@ -178,7 +231,7 @@ export default function ApplicationsPage() {
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -190,7 +243,7 @@ export default function ApplicationsPage() {
               </h3>
               <p className="text-sm text-muted-foreground mt-1 max-w-sm">
                 {applications.length === 0
-                  ? "Evaluate a job to create your first application."
+                  ? "Click ‘Add application’ to record a job you applied to outside the tool, or mark a discovered job as applied from the Jobs tab."
                   : "Try adjusting your search or filter."}
               </p>
             </div>
@@ -207,6 +260,7 @@ export default function ApplicationsPage() {
                   <TableHead className="w-12">PDF</TableHead>
                   <TableHead>Report</TableHead>
                   <TableHead>Notes</TableHead>
+                  <TableHead className="w-12" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -274,8 +328,21 @@ export default function ApplicationsPage() {
                         </span>
                       )}
                     </TableCell>
-                    <TableCell className="max-w-[200px] truncate text-muted-foreground text-xs">
-                      {app.notes || "--"}
+                    <TableCell className="max-w-[240px]">
+                      <NotesCell
+                        initial={app.notes}
+                        onSave={(next) => handleNotesSave(app.id, next)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        onClick={() => handleDelete(app.id)}
+                        title="Delete"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -284,6 +351,231 @@ export default function ApplicationsPage() {
           )}
         </CardContent>
       </Card>
+
+      {addOpen && (
+        <AddApplicationDialog
+          onClose={() => setAddOpen(false)}
+          onCreated={() => {
+            setAddOpen(false)
+            fetchApplications()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Inline notes editor ───────────────────────────────────────────
+
+function NotesCell({
+  initial,
+  onSave,
+}: {
+  initial: string
+  onSave: (next: string) => Promise<boolean>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(initial)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!editing) setValue(initial)
+  }, [initial, editing])
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="text-left text-xs text-muted-foreground hover:text-foreground w-full truncate"
+        title="Click to edit"
+      >
+        {initial || <span className="italic">add notes…</span>}
+      </button>
+    )
+  }
+
+  return (
+    <div className="space-y-1">
+      <Textarea
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        rows={3}
+        autoFocus
+        className="text-xs"
+      />
+      <div className="flex gap-1 justify-end">
+        <Button
+          size="xs"
+          variant="ghost"
+          onClick={() => {
+            setValue(initial)
+            setEditing(false)
+          }}
+          disabled={saving}
+        >
+          <X className="h-3 w-3" />
+        </Button>
+        <Button
+          size="xs"
+          onClick={async () => {
+            setSaving(true)
+            const ok = await onSave(value)
+            setSaving(false)
+            if (ok) setEditing(false)
+          }}
+          disabled={saving}
+        >
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ── Manual add dialog ─────────────────────────────────────────────
+
+function AddApplicationDialog({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void
+  onCreated: () => void
+}) {
+  const [form, setForm] = useState({
+    company: "",
+    role: "",
+    url: "",
+    status: "applied",
+    notes: "",
+    appliedAt: new Date().toISOString().slice(0, 10),
+  })
+  const [saving, setSaving] = useState(false)
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      const res = await fetch("/api/applications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company: form.company,
+          role: form.role,
+          url: form.url || undefined,
+          status: form.status,
+          notes: form.notes || undefined,
+          appliedAt: form.appliedAt ? new Date(form.appliedAt).toISOString() : undefined,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error ?? `Create failed (HTTP ${res.status})`)
+        return
+      }
+      toast.success("Application added")
+      onCreated()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Network error")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <form
+        onSubmit={submit}
+        className="bg-background border rounded-lg p-6 w-full max-w-lg space-y-4"
+      >
+        <div>
+          <h3 className="font-semibold text-lg">Add application</h3>
+          <p className="text-sm text-muted-foreground">
+            For jobs you applied to outside the tool.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium mb-1">Company</label>
+            <Input
+              value={form.company}
+              onChange={(e) => setForm({ ...form, company: e.target.value })}
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Role</label>
+            <Input
+              value={form.role}
+              onChange={(e) => setForm({ ...form, role: e.target.value })}
+              required
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Job URL <span className="text-muted-foreground font-normal">(optional)</span>
+          </label>
+          <Input
+            type="url"
+            value={form.url}
+            onChange={(e) => setForm({ ...form, url: e.target.value })}
+            placeholder="https://…"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium mb-1">Status</label>
+            <Select
+              value={form.status}
+              onValueChange={(val) => val && setForm({ ...form, status: val })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {APPLICATION_STATES.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>
+                    {s.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Applied on</label>
+            <Input
+              type="date"
+              value={form.appliedAt}
+              onChange={(e) => setForm({ ...form, appliedAt: e.target.value })}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Notes <span className="text-muted-foreground font-normal">(optional)</span>
+          </label>
+          <Textarea
+            value={form.notes}
+            onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            rows={3}
+          />
+        </div>
+
+        <div className="flex gap-2 justify-end">
+          <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving || !form.company || !form.role}>
+            {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            Add
+          </Button>
+        </div>
+      </form>
     </div>
   )
 }

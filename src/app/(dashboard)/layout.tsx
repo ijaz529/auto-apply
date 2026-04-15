@@ -76,6 +76,17 @@ export default function DashboardLayout({
             Jobs
           </Link>
           <Link
+            href="/applications"
+            className={cn(
+              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              pathname.startsWith("/applications")
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Applied
+          </Link>
+          <Link
             href="/settings"
             className={cn(
               "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
@@ -88,7 +99,10 @@ export default function DashboardLayout({
           </Link>
         </div>
       </nav>
-      <main className="max-w-2xl mx-auto p-4 pt-6">
+      <main className={cn(
+        "mx-auto p-4 pt-6",
+        pathname.startsWith("/applications") ? "max-w-6xl" : "max-w-2xl"
+      )}>
         {children}
       </main>
     </div>

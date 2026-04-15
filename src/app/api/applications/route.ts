@@ -92,3 +92,83 @@ export async function GET(req: NextRequest) {
     )
   }
 }
+
+/**
+ * Create a manual application — for jobs applied to outside the tool.
+ * Body: { company, role, url?, status?, notes?, appliedAt? }
+ * Creates a Job row with source="manual" + an Application row.
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const userId = await getUserId()
+
+    const body = await req.json().catch(() => ({}))
+    const {
+      company,
+      role,
+      url,
+      status,
+      notes,
+      appliedAt,
+    } = body as {
+      company?: string
+      role?: string
+      url?: string
+      status?: string
+      notes?: string
+      appliedAt?: string
+    }
+
+    if (!company || !role) {
+      return NextResponse.json(
+        { error: "company and role are required" },
+        { status: 400 }
+      )
+    }
+
+    const finalStatus = status ?? "applied"
+    if (!VALID_STATUSES.has(finalStatus)) {
+      return NextResponse.json(
+        {
+          error: `Invalid status: "${finalStatus}". Valid: ${[...VALID_STATUSES].join(", ")}`,
+        },
+        { status: 400 }
+      )
+    }
+
+    const jobUrl = url?.trim() || `manual-${Date.now()}`
+    const appliedAtDate =
+      finalStatus === "applied" || finalStatus === "responded" || finalStatus === "interview" || finalStatus === "offer" || finalStatus === "rejected"
+        ? (appliedAt ? new Date(appliedAt) : new Date())
+        : null
+
+    const job = await prisma.job.create({
+      data: {
+        userId,
+        url: jobUrl,
+        company: company.trim(),
+        role: role.trim(),
+        source: "manual",
+      },
+    })
+
+    const application = await prisma.application.create({
+      data: {
+        jobId: job.id,
+        userId,
+        status: finalStatus,
+        notes: notes?.trim() || null,
+        appliedAt: appliedAtDate,
+      },
+      include: { job: { include: { evaluation: true } } },
+    })
+
+    return NextResponse.json({ application }, { status: 201 })
+  } catch (error) {
+    console.error("Application create error:", error)
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    )
+  }
+}
