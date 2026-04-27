@@ -1,86 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getUserId } from "@/lib/guest"
 import { prisma } from "@/lib/db"
-import { evaluateJob } from "@/lib/ai/evaluate"
+import { processEvaluation } from "@/lib/queue/run-evaluation"
+import { tryEnqueueEvaluation } from "@/lib/queue/evaluation-queue"
 
-// Fire-and-forget evaluation — runs Claude in background, writes to DB when done
-async function runEvaluationInBackground(jobId: string, userId: string) {
-  try {
-    const job = await prisma.job.findFirst({ where: { id: jobId, userId } })
-    if (!job?.jdText) return
-
-    const profile = await prisma.profile.findUnique({ where: { userId } })
-    if (!profile?.cvMarkdown) return
-
-    const model = (profile.preferredModel === "opus" ? "opus" : "sonnet") as "sonnet" | "opus"
-
-    const result = await evaluateJob(
-      job.jdText,
-      profile.cvMarkdown,
-      profile.preferences || undefined,
-      model
-    )
-
-    const enrichedReport = result.reportMarkdown.replace(
-      "# Evaluation: Role at Company",
-      `# Evaluation: ${job.role} at ${job.company}`
-    )
-
-    const existingEval = await prisma.evaluation.findUnique({ where: { jobId } })
-
-    if (existingEval) {
-      await prisma.evaluation.update({
-        where: { id: existingEval.id },
-        data: {
-          score: result.score,
-          archetype: result.archetype,
-          legitimacy: result.legitimacy,
-          reportMarkdown: enrichedReport,
-          blocksJson: result.blocksJson,
-          keywords: result.keywords,
-          scoreBreakdown: result.scoreBreakdown,
-          gaps: result.gaps,
-          model,
-        },
-      })
-    } else {
-      await prisma.evaluation.create({
-        data: {
-          jobId,
-          userId,
-          score: result.score,
-          archetype: result.archetype,
-          legitimacy: result.legitimacy,
-          reportMarkdown: enrichedReport,
-          blocksJson: result.blocksJson,
-          keywords: result.keywords,
-          scoreBreakdown: result.scoreBreakdown,
-          gaps: result.gaps,
-          model,
-        },
-      })
-    }
-
-    await prisma.application.updateMany({
-      where: { jobId, userId },
-      data: {
-        status: "evaluated",
-        manualSteps: result.manualApplySteps,
-      },
-    })
-
-    console.log(`Evaluation complete for job ${jobId}: score ${result.score}`)
-  } catch (error) {
-    console.error(`Background evaluation failed for job ${jobId}:`, error)
-    try {
-      await prisma.application.updateMany({
-        where: { jobId, userId },
-        data: { status: "evaluated", notes: `Evaluation failed: ${error instanceof Error ? error.message : "Unknown error"}` },
-      })
-    } catch {
-      // ignore
-    }
-  }
+// Try queue first; on Redis-unavailable / enqueue-error fall back to in-process
+// fire-and-forget. Either way the API returns immediately with status: evaluating.
+async function scheduleEvaluation(jobId: string, userId: string) {
+  const queued = await tryEnqueueEvaluation({ jobId, userId })
+  if (queued) return
+  void processEvaluation(jobId, userId).catch((err) => {
+    console.error(`[direct-eval] failed for job ${jobId}:`, err)
+  })
 }
 
 export async function POST(
@@ -111,8 +42,8 @@ export async function POST(
       )
     }
 
-    // Fire and forget — don't await, return immediately
-    runEvaluationInBackground(id, userId)
+    // Schedule (queue or direct). Returns immediately.
+    scheduleEvaluation(id, userId)
 
     return NextResponse.json({ status: "evaluating", jobId: id })
   } catch (error) {
