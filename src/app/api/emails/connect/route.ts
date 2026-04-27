@@ -1,47 +1,58 @@
 import { NextResponse } from "next/server"
 import { getUserId } from "@/lib/guest"
-import { connectGmail } from "@/lib/email/gmail"
+import { prisma } from "@/lib/db"
 
-export async function POST(req: Request) {
+/**
+ * GET /api/emails/connect
+ *
+ * Reports whether the current user has a usable Google connection (account
+ * present + refresh token + tokens not silently expired). The actual OAuth
+ * flow is now handled by NextAuth — to (re-)connect Gmail, redirect the user
+ * to `/api/auth/signin/google`. This endpoint just tells the UI whether to
+ * show "Connect Gmail" or "Sync Now".
+ */
+export async function GET() {
   try {
     const userId = await getUserId()
-
-    const body = await req.json().catch(() => ({}))
-    const { authCode } = body as { authCode?: string }
-
-    if (!authCode) {
-      return NextResponse.json(
-        {
-          error: "Missing authCode",
-          setupInstructions: {
-            step1: "Create a Google Cloud project at https://console.cloud.google.com",
-            step2: "Enable the Gmail API",
-            step3: "Create OAuth 2.0 credentials (Web application type)",
-            step4: "Add authorized redirect URI: {your-domain}/api/emails/connect/callback",
-            step5: "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in your .env",
-            step6: "Direct the user to the Google consent screen to get an auth code",
-            step7: "POST that auth code to this endpoint",
-          },
-        },
-        { status: 400 }
-      )
-    }
-
-    const result = await connectGmail(userId, authCode)
-
-    if (!result.success) {
-      return NextResponse.json(
-        { error: result.message },
-        { status: 503 }
-      )
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: "Gmail connected successfully. Emails will be monitored automatically.",
+    const account = await prisma.account.findFirst({
+      where: { userId, provider: "google" },
+      select: { refresh_token: true, scope: true, expires_at: true },
     })
-  } catch (error) {
-    console.error("Gmail connect error:", error)
+
+    if (!account) {
+      return NextResponse.json({
+        connected: false,
+        reason: "no_google_account",
+        signInUrl: "/api/auth/signin/google",
+      })
+    }
+    if (!account.refresh_token) {
+      return NextResponse.json({
+        connected: false,
+        reason: "missing_refresh_token",
+        signInUrl: "/api/auth/signin/google",
+        message:
+          "Sign out and sign in with Google again — your account is missing a refresh token.",
+      })
+    }
+    const hasGmailScope =
+      typeof account.scope === "string" &&
+      account.scope.includes("gmail.readonly")
+    if (!hasGmailScope) {
+      return NextResponse.json({
+        connected: false,
+        reason: "missing_gmail_scope",
+        signInUrl: "/api/auth/signin/google",
+        message:
+          "Your Google account is connected but Gmail permission was not granted. Re-sign-in to grant it.",
+      })
+    }
+    return NextResponse.json({
+      connected: true,
+      expiresAt: account.expires_at,
+    })
+  } catch (err) {
+    console.error("Gmail connect status error:", err)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

@@ -16,6 +16,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      authorization: {
+        params: {
+          // Adds gmail.readonly so we can poll the user's inbox for application
+          // status updates. `access_type: offline` + `prompt: consent` ensures
+          // Google returns a refresh_token (without `prompt: consent`, returning
+          // users may sign in without a refresh_token, which makes background
+          // polling impossible). Existing users will see the new consent screen
+          // on their next sign-in.
+          scope:
+            "openid email profile https://www.googleapis.com/auth/gmail.readonly",
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
     }),
     Credentials({
       name: "credentials",
