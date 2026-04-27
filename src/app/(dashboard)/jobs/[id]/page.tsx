@@ -11,6 +11,7 @@ import {
   ArrowLeft,
   GraduationCap,
   Users,
+  RefreshCw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -65,7 +66,10 @@ export default function JobDetailPage() {
   const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(false)
   const [generatingCv, setGeneratingCv] = useState(false)
+  const [reEvaluating, setReEvaluating] = useState(false)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
+  const reEvalPollingRef = useRef<NodeJS.Timeout | null>(null)
+  const reEvalSnapshotRef = useRef<{ score: number | null } | null>(null)
 
   const fetchJob = useCallback(async () => {
     try {
@@ -104,6 +108,44 @@ export default function JobDetailPage() {
       }
     }
   }, [job, fetchJob])
+
+  async function handleReEvaluate() {
+    if (reEvaluating) return
+    // Snapshot the current eval signal so we know when a fresh result lands.
+    reEvalSnapshotRef.current = { score: job?.evaluation?.score ?? null }
+    setReEvaluating(true)
+    try {
+      await fetch(`/api/jobs/${id}/evaluate`, { method: "POST" })
+    } catch {
+      // server-side fire-and-forget; failures will surface via the next fetch
+    }
+    // Poll until the score (or model) changes, or 2 min cap.
+    const startedAt = Date.now()
+    const tick = async () => {
+      const updated = await fetchJob()
+      const before = reEvalSnapshotRef.current
+      const after = updated?.evaluation
+      // Done if there's now an eval and either it didn't exist before, or the score moved.
+      const changed =
+        !!after &&
+        (before?.score == null || (after.score ?? null) !== before.score)
+      if (changed || Date.now() - startedAt > 120_000) {
+        if (reEvalPollingRef.current) {
+          clearInterval(reEvalPollingRef.current)
+          reEvalPollingRef.current = null
+        }
+        setReEvaluating(false)
+      }
+    }
+    reEvalPollingRef.current = setInterval(tick, 4000)
+  }
+
+  // Cleanup the re-eval poller on unmount.
+  useEffect(() => {
+    return () => {
+      if (reEvalPollingRef.current) clearInterval(reEvalPollingRef.current)
+    }
+  }, [])
 
   async function handleMarkApplied() {
     setApplying(true)
@@ -218,6 +260,10 @@ export default function JobDetailPage() {
             <Button onClick={handleDownloadCv} disabled={generatingCv} variant="outline" size="sm">
               {generatingCv ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}
               Tailored CV
+            </Button>
+            <Button onClick={handleReEvaluate} disabled={reEvaluating} variant="outline" size="sm" title="Re-run the evaluation against your current CV and target roles">
+              {reEvaluating ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
+              Re-evaluate
             </Button>
             <Button variant="outline" size="sm" onClick={() => window.location.href = `/interview-prep?jobId=${id}`}>
               <GraduationCap className="mr-1.5 h-3.5 w-3.5" />

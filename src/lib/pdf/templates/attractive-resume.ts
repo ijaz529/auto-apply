@@ -1,4 +1,5 @@
 import type { CVData } from "@/types"
+import { prioritizeByKeywords } from "../keyword-scoring"
 
 /**
  * Escape special Typst characters in user-provided text.
@@ -226,7 +227,11 @@ export function renderAttractiveResume(
       lines.push(`      "${esc(subtitle)}",`)
       lines.push(`      "${esc(dates)}",`)
       lines.push(`    )[`)
-      for (const bullet of w.bullets ?? []) {
+      for (const bullet of prioritizeByKeywords(
+        w.bullets ?? [],
+        (b) => b,
+        keywords
+      )) {
         lines.push(`      - ${esc(bullet)}`)
       }
       lines.push(`    ]`)
@@ -234,10 +239,15 @@ export function renderAttractiveResume(
     lines.push("")
   }
 
-  // Projects
-  if (cv.projects.length > 0) {
+  // Projects (whole-project reorder by JD relevance, then bullets within each)
+  const orderedProjects = prioritizeByKeywords(
+    cv.projects,
+    (p) => `${p.name ?? ""} ${p.role ?? ""} ${(p.bullets ?? []).join(" ")}`,
+    keywords
+  )
+  if (orderedProjects.length > 0) {
     lines.push(`    #section("Projects")`)
-    for (const p of cv.projects) {
+    for (const p of orderedProjects) {
       const dates = [p.startDate, p.endDate].filter(Boolean).join(" - ")
       const subtitle = p.role || ""
       lines.push(`    #entry(`)
@@ -245,7 +255,11 @@ export function renderAttractiveResume(
       lines.push(`      "${esc(subtitle)}",`)
       lines.push(`      "${esc(dates)}",`)
       lines.push(`    )[`)
-      for (const bullet of p.bullets ?? []) {
+      for (const bullet of prioritizeByKeywords(
+        p.bullets ?? [],
+        (b) => b,
+        keywords
+      )) {
         lines.push(`      - ${esc(bullet)}`)
       }
       lines.push(`    ]`)

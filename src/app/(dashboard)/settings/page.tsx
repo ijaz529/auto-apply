@@ -377,7 +377,7 @@ export default function SettingsPage() {
                       placeholder="Product Manager, Product Ops, Strategy Lead (comma-separated)"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Comma-separated list of roles you are targeting.
+                      Comma-separated list of roles you are targeting. New evaluations use these to calibrate North Star alignment — on-target roles score higher, off-target roles get an honest mismatch note.
                     </p>
                   </div>
 

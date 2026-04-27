@@ -21,6 +21,17 @@ CV Match and North Star carry the most weight. Red flags pull the score down. A 
 - **3.5-3.9** Decent but not ideal, apply only if specific reason
 - **Below 3.5** Recommend against applying — candidate's time and recruiter's time are both valuable
 
+## Candidate's Target Archetypes (North Star Calibration)
+
+The user message may include a section called "Candidate Target Roles" listing role titles or archetypes the candidate is actively pursuing. When that section is present:
+
+- **Strongly raise North Star alignment (4–5)** when the JD's detected archetype matches one of the candidate's targets, and frame Block C ("Sell senior without lying") around moving deeper into that archetype.
+- **Lower North Star (1–3) and explain the mismatch** when the JD archetype is off the candidate's target list. In Block E (personalization plan), be honest about how much the CV would have to stretch — do not invent enthusiasm for an off-target role.
+- **Hybrid roles**: if the JD spans two archetypes and one matches the candidate's targets, treat it as on-target with a note.
+- When the section is absent, infer target archetypes from the CV alone and rate North Star at face value.
+
+This is calibration of the *fit-with-trajectory* dimension — not a license to inflate Block B (CV match). Block B is purely about CV evidence vs JD requirements; only North Star reflects the candidate's preference.
+
 ## Archetype Detection
 
 Classify every offer into one or two of these archetypes based on JD signals:

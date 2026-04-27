@@ -1,4 +1,5 @@
 import type { CVData } from "@/types"
+import { prioritizeByKeywords } from "../keyword-scoring"
 
 /**
  * Escape special Typst characters in user-provided text.
@@ -102,18 +103,30 @@ export function renderBasicResume(
       lines.push(workArgs.join("\n"))
       lines.push(`)`)
 
-      for (const bullet of w.bullets ?? []) {
+      // Reorder bullets within this work block so the JD-relevant ones surface first.
+      const orderedBullets = prioritizeByKeywords(
+        w.bullets ?? [],
+        (b) => b,
+        keywords
+      )
+      for (const bullet of orderedBullets) {
         lines.push(`- ${esc(bullet)}`)
       }
       lines.push("")
     }
   }
 
-  // Projects
-  if (cv.projects.length > 0) {
+  // Projects (entire projects reordered by JD relevance — heading + bullets together).
+  const orderedProjects = prioritizeByKeywords(
+    cv.projects,
+    (p) => `${p.name ?? ""} ${p.role ?? ""} ${(p.bullets ?? []).join(" ")}`,
+    keywords
+  )
+
+  if (orderedProjects.length > 0) {
     lines.push(`== Projects`)
     lines.push("")
-    for (const p of cv.projects) {
+    for (const p of orderedProjects) {
       const projArgs: string[] = []
       if (p.name) projArgs.push(`  name: "${escStr(p.name)}",`)
       if (p.role) projArgs.push(`  role: "${escStr(p.role)}",`)
@@ -127,7 +140,12 @@ export function renderBasicResume(
       lines.push(projArgs.join("\n"))
       lines.push(`)`)
 
-      for (const bullet of p.bullets ?? []) {
+      const orderedBullets = prioritizeByKeywords(
+        p.bullets ?? [],
+        (b) => b,
+        keywords
+      )
+      for (const bullet of orderedBullets) {
         lines.push(`- ${esc(bullet)}`)
       }
       lines.push("")
