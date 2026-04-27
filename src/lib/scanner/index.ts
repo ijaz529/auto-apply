@@ -3,9 +3,11 @@
  *
  * Fetches Greenhouse, Ashby, and Lever APIs directly, applies title
  * filters, deduplicates against existing jobs, and returns structured results.
+ * LinkedIn jobs-guest queries dispatch to a separate handler in `./linkedin`.
  *
  * Ported from scan.mjs in career-ops.
  */
+import { fetchLinkedInJobs, type LinkedInQuery } from "./linkedin"
 
 const CONCURRENCY = 15
 const FETCH_TIMEOUT_MS = 8_000
@@ -21,10 +23,26 @@ export interface JobResult {
 }
 
 export interface CompanyConfig {
+  /** Discriminator. Absent = ATS (back-compat). */
+  kind?: "ats"
   name: string
   careers_url?: string
   api?: string
   enabled?: boolean
+}
+
+export interface LinkedInScanEntry extends LinkedInQuery {
+  kind: "linkedin"
+}
+
+/**
+ * A scan can target either company ATS APIs (Greenhouse / Ashby / Lever) or
+ * LinkedIn search queries. The discriminated union lets one scan config mix both.
+ */
+export type ScanEntry = CompanyConfig | LinkedInScanEntry
+
+function isLinkedInEntry(entry: ScanEntry): entry is LinkedInScanEntry {
+  return entry.kind === "linkedin"
 }
 
 export interface TitleFilterConfig {
@@ -181,7 +199,7 @@ async function parallelFetch<T>(
 // ── Main Scanner ───────────────────────────────────────────────────
 
 export async function scanPortals(
-  companies: CompanyConfig[],
+  entries: ScanEntry[],
   titleFilter: TitleFilterConfig,
   existingUrls?: Set<string>
 ): Promise<ScanSummary> {
@@ -189,16 +207,17 @@ export async function scanPortals(
   const seenUrls = existingUrls || new Set<string>()
   const date = new Date().toISOString().slice(0, 10)
 
-  // Filter to enabled companies with detectable APIs
-  const targets = companies
-    .filter((c) => c.enabled !== false)
-    .map((c) => ({
-      ...c,
-      _api: detectApi(c.careers_url || "", c.api),
-    }))
+  const enabled = entries.filter((e) => e.enabled !== false)
+
+  // Split: LinkedIn queries dispatch separately; ATS entries need an api detected.
+  const linkedinTargets = enabled.filter(isLinkedInEntry)
+  const atsTargets = enabled
+    .filter((e): e is CompanyConfig => !isLinkedInEntry(e))
+    .map((c) => ({ ...c, _api: detectApi(c.careers_url || "", c.api) }))
     .filter((c) => c._api !== null)
 
-  const skippedCount = companies.filter((c) => c.enabled !== false).length - targets.length
+  const atsSkipped =
+    enabled.filter((e) => !isLinkedInEntry(e)).length - atsTargets.length
 
   let totalFound = 0
   let totalFiltered = 0
@@ -206,26 +225,29 @@ export async function scanPortals(
   const newJobs: JobResult[] = []
   const errors: Array<{ company: string; error: string }> = []
 
-  const tasks = targets.map((company) => async () => {
+  const ingest = (jobs: JobResult[], sourceLabel: string) => {
+    totalFound += jobs.length
+    for (const job of jobs) {
+      if (!filter(job.title)) {
+        totalFiltered++
+        continue
+      }
+      if (!job.url || seenUrls.has(job.url)) {
+        totalDupes++
+        continue
+      }
+      seenUrls.add(job.url)
+      newJobs.push(job)
+    }
+    void sourceLabel
+  }
+
+  const atsTasks = atsTargets.map((company) => async () => {
     const { type, url } = company._api!
     try {
       const json = await fetchJson(url)
       const jobs = PARSERS[type](json, company.name)
-      totalFound += jobs.length
-
-      for (const job of jobs) {
-        if (!filter(job.title)) {
-          totalFiltered++
-          continue
-        }
-        if (seenUrls.has(job.url)) {
-          totalDupes++
-          continue
-        }
-        // Mark as seen to avoid intra-scan dupes
-        seenUrls.add(job.url)
-        newJobs.push(job)
-      }
+      ingest(jobs, company.name)
     } catch (err) {
       errors.push({
         company: company.name,
@@ -234,11 +256,30 @@ export async function scanPortals(
     }
   })
 
-  await parallelFetch(tasks, CONCURRENCY)
+  // LinkedIn fetches run sequentially across queries (santifer's scan.mjs does the
+  // same — politeness more than throughput. The library throttles between pages
+  // *within* a query already.)
+  const linkedinTasks = linkedinTargets.map((q) => async () => {
+    const label = q.label || q.keywords
+    try {
+      const jobs = await fetchLinkedInJobs(q)
+      ingest(jobs, label)
+    } catch (err) {
+      errors.push({
+        company: `linkedin:${label}`,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  })
+
+  await parallelFetch(atsTasks, CONCURRENCY)
+  // Run LinkedIn queries serially (low concurrency) to respect their unauthenticated
+  // endpoint and avoid coincidental rate-limit triggers.
+  await parallelFetch(linkedinTasks, 1)
 
   return {
-    companiesScanned: targets.length,
-    companiesSkipped: skippedCount,
+    companiesScanned: atsTargets.length + linkedinTargets.length,
+    companiesSkipped: atsSkipped,
     totalJobsFound: totalFound,
     filteredByTitle: totalFiltered,
     duplicatesSkipped: totalDupes,

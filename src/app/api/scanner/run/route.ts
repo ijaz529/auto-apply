@@ -3,7 +3,7 @@ import { getUserId } from "@/lib/guest"
 import { prisma } from "@/lib/db"
 import {
   scanPortals,
-  type CompanyConfig,
+  type ScanEntry,
   type TitleFilterConfig,
 } from "@/lib/scanner"
 
@@ -24,7 +24,7 @@ export async function POST() {
       )
     }
 
-    const companies = scan.portalsConfig as unknown as CompanyConfig[]
+    const companies = scan.portalsConfig as unknown as ScanEntry[]
     const titleFilter = (scan.titleFilter as unknown as TitleFilterConfig) || {
       positive: [],
       negative: [],

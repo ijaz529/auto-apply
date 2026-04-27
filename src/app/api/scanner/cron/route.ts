@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import {
   scanPortals,
-  type CompanyConfig,
+  type ScanEntry,
   type TitleFilterConfig,
 } from "@/lib/scanner"
 
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 
     for (const scan of dueScans) {
       try {
-        const companies = scan.portalsConfig as unknown as CompanyConfig[]
+        const companies = scan.portalsConfig as unknown as ScanEntry[]
         const titleFilter = (scan.titleFilter as unknown as TitleFilterConfig) || {
           positive: [],
           negative: [],
