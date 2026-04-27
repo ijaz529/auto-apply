@@ -12,6 +12,7 @@ import {
   GraduationCap,
   Users,
   RefreshCw,
+  Compass,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -67,6 +68,9 @@ export default function JobDetailPage() {
   const [applying, setApplying] = useState(false)
   const [generatingCv, setGeneratingCv] = useState(false)
   const [reEvaluating, setReEvaluating] = useState(false)
+  const [strategy, setStrategy] = useState<{ research: string; negotiation: string } | null>(null)
+  const [strategyLoading, setStrategyLoading] = useState(false)
+  const [strategyError, setStrategyError] = useState<string | null>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const reEvalPollingRef = useRef<NodeJS.Timeout | null>(null)
   const reEvalSnapshotRef = useRef<{ score: number | null } | null>(null)
@@ -108,6 +112,42 @@ export default function JobDetailPage() {
       }
     }
   }, [job, fetchJob])
+
+  // Pull cached strategy when the eval first loads, so the panel shows
+  // immediately without requiring a click for jobs that already have one.
+  useEffect(() => {
+    if (!job?.evaluation || strategy || strategyLoading) return
+    let cancelled = false
+    fetch(`/api/jobs/${id}/strategy`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.strategy) setStrategy(data.strategy)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [id, job?.evaluation, strategy, strategyLoading])
+
+  async function handleGenerateStrategy() {
+    if (strategyLoading) return
+    setStrategyLoading(true)
+    setStrategyError(null)
+    try {
+      const res = await fetch(`/api/jobs/${id}/strategy`, { method: "POST" })
+      if (res.ok) {
+        const data = await res.json()
+        setStrategy(data.strategy ?? null)
+      } else {
+        const err = await res.json().catch(() => ({ error: "Failed to generate strategy" }))
+        setStrategyError(err.error ?? "Failed to generate strategy.")
+      }
+    } catch {
+      setStrategyError("Network error. Check your connection.")
+    } finally {
+      setStrategyLoading(false)
+    }
+  }
 
   async function handleReEvaluate() {
     if (reEvaluating) return
@@ -265,6 +305,10 @@ export default function JobDetailPage() {
               {reEvaluating ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
               Re-evaluate
             </Button>
+            <Button onClick={handleGenerateStrategy} disabled={strategyLoading} variant="outline" size="sm" title="Generate company research + negotiation kit for this role">
+              {strategyLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Compass className="mr-1.5 h-3.5 w-3.5" />}
+              {strategy ? "Re-generate strategy" : "Strategy"}
+            </Button>
             <Button variant="outline" size="sm" onClick={() => window.location.href = `/interview-prep?jobId=${id}`}>
               <GraduationCap className="mr-1.5 h-3.5 w-3.5" />
               Interview Prep
@@ -326,6 +370,41 @@ export default function JobDetailPage() {
               </CardContent>
             </Card>
           ) : null}
+
+          {/* Strategy: company research + negotiation kit */}
+          {(strategy || strategyLoading || strategyError) && (
+            <Card>
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Compass className="h-4 w-4 text-muted-foreground" />
+                  <p className="font-medium">Strategy</p>
+                </div>
+                {strategyError && (
+                  <p className="text-sm text-red-600">{strategyError}</p>
+                )}
+                {strategyLoading && !strategy && (
+                  <p className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Generating company research and negotiation kit...
+                  </p>
+                )}
+                {strategy && (
+                  <Tabs defaultValue="research">
+                    <TabsList>
+                      <TabsTrigger value="research" className="text-xs">Company Research</TabsTrigger>
+                      <TabsTrigger value="negotiation" className="text-xs">Negotiation Kit</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="research">
+                      <MarkdownRenderer content={strategy.research} />
+                    </TabsContent>
+                    <TabsContent value="negotiation">
+                      <MarkdownRenderer content={strategy.negotiation} />
+                    </TabsContent>
+                  </Tabs>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Keywords */}
           {eval_.keywords && (eval_.keywords as string[]).length > 0 && (
