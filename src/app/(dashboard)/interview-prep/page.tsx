@@ -15,6 +15,8 @@ import {
   MessageSquare,
   BookOpen,
   Layers,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -128,6 +130,28 @@ export default function InterviewPrepPage() {
   const [outreachData, setOutreachData] = useState<OutreachData | null>(null)
   const [outreachError, setOutreachError] = useState<string | null>(null)
   const [copiedField, setCopiedField] = useState<string | null>(null)
+
+  // Practice mode (flashcards): hide STAR details until clicked.
+  const [practiceMode, setPracticeMode] = useState(false)
+  const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set())
+
+  function toggleRevealed(id: string) {
+    setRevealedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function togglePracticeMode() {
+    setPracticeMode((prev) => {
+      const next = !prev
+      // When entering practice mode, start with everything hidden.
+      if (next) setRevealedIds(new Set())
+      return next
+    })
+  }
 
   const fetchStories = useCallback(async () => {
     try {
@@ -656,8 +680,23 @@ export default function InterviewPrepPage() {
 
       {/* Story Bank */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Story Bank</CardTitle>
+          {stories.length > 0 && (
+            <Button
+              variant={practiceMode ? "default" : "outline"}
+              size="sm"
+              onClick={togglePracticeMode}
+              title="Hide STAR details until you click — flashcard-style practice"
+            >
+              {practiceMode ? (
+                <Eye className="mr-1.5 h-3.5 w-3.5" />
+              ) : (
+                <EyeOff className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              {practiceMode ? "Practice mode: on" : "Practice mode"}
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -679,6 +718,88 @@ export default function InterviewPrepPage() {
                 Stories will be generated during interview prep, or you can add
                 them manually using the Add Story button above.
               </p>
+            </div>
+          ) : practiceMode ? (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Click a story title to reveal its STAR+R details. Try to recall
+                each story before revealing — the muscle memory of practice
+                matters more than the polish of the prose.
+              </p>
+              {stories.map((story) => {
+                const revealed = revealedIds.has(story.id)
+                return (
+                  <div
+                    key={story.id}
+                    className="rounded-lg border bg-card p-3 transition-colors"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleRevealed(story.id)}
+                      className="w-full text-left flex items-center justify-between gap-3"
+                      aria-expanded={revealed}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Badge variant="secondary" className="shrink-0">
+                          {story.category}
+                        </Badge>
+                        <span className="font-medium truncate">
+                          {story.title}
+                        </span>
+                      </div>
+                      {revealed ? (
+                        <EyeOff className="h-4 w-4 text-muted-foreground shrink-0" />
+                      ) : (
+                        <Eye className="h-4 w-4 text-muted-foreground shrink-0" />
+                      )}
+                    </button>
+                    {revealed && (
+                      <div className="mt-3 space-y-2 text-sm">
+                        {story.situation && (
+                          <p>
+                            <span className="font-medium">Situation:</span>{" "}
+                            <span className="text-muted-foreground">
+                              {story.situation}
+                            </span>
+                          </p>
+                        )}
+                        {story.task && (
+                          <p>
+                            <span className="font-medium">Task:</span>{" "}
+                            <span className="text-muted-foreground">
+                              {story.task}
+                            </span>
+                          </p>
+                        )}
+                        {story.action && (
+                          <p>
+                            <span className="font-medium">Action:</span>{" "}
+                            <span className="text-muted-foreground">
+                              {story.action}
+                            </span>
+                          </p>
+                        )}
+                        {story.result && (
+                          <p>
+                            <span className="font-medium">Result:</span>{" "}
+                            <span className="text-muted-foreground">
+                              {story.result}
+                            </span>
+                          </p>
+                        )}
+                        {story.reflection && (
+                          <p>
+                            <span className="font-medium">Reflection:</span>{" "}
+                            <span className="text-muted-foreground">
+                              {story.reflection}
+                            </span>
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           ) : (
             <Table>
