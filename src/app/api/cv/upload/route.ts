@@ -89,10 +89,10 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Structure the CV (best-effort heuristic)
+    // Structure the CV (best-effort — falls back to heuristic on AI failure)
     let cvStructured
     try {
-      cvStructured = structureCv(rawText)
+      cvStructured = await structureCv(rawText)
     } catch {
       // Structuring is best-effort; raw text is still stored
       cvStructured = null
