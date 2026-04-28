@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { formatCompaniesText, parseCompaniesText } from "./text-config"
+import {
+  formatCompaniesText,
+  formatLinkedInText,
+  parseCompaniesText,
+  parseLinkedInText,
+} from "./text-config"
 import type { ScanEntry } from "./index"
 
 describe("parseCompaniesText", () => {
@@ -78,5 +83,76 @@ describe("formatCompaniesText", () => {
     const formatted = formatCompaniesText(parsed)
     expect(formatted.text).toBe(text)
     expect(formatted.linkedinHidden).toBe(0)
+  })
+})
+
+describe("parseLinkedInText", () => {
+  it("parses keywords | location lines", () => {
+    expect(parseLinkedInText("Senior PM | Berlin, Germany")).toEqual([
+      { kind: "linkedin", keywords: "Senior PM", location: "Berlin, Germany" },
+    ])
+  })
+
+  it("captures optional time_range and label", () => {
+    expect(
+      parseLinkedInText(
+        "Senior PM | Berlin, Germany | r604800 | Berlin scanner"
+      )
+    ).toEqual([
+      {
+        kind: "linkedin",
+        keywords: "Senior PM",
+        location: "Berlin, Germany",
+        time_range: "r604800",
+        label: "Berlin scanner",
+      },
+    ])
+  })
+
+  it("drops lines missing keywords or location", () => {
+    expect(parseLinkedInText("\n| Berlin\nSenior PM\n")).toEqual([])
+  })
+
+  it("trims whitespace around pipe-separated tokens", () => {
+    expect(
+      parseLinkedInText("   Senior PM   |   Berlin, Germany   ")
+    ).toEqual([
+      { kind: "linkedin", keywords: "Senior PM", location: "Berlin, Germany" },
+    ])
+  })
+})
+
+describe("formatLinkedInText", () => {
+  it("renders kind:linkedin entries; skips ATS entries", () => {
+    const entries: ScanEntry[] = [
+      { name: "Stripe", careers_url: "https://example.com" },
+      {
+        kind: "linkedin",
+        keywords: "Senior PM",
+        location: "Berlin, Germany",
+        time_range: "r604800",
+      },
+    ]
+    expect(formatLinkedInText(entries)).toBe(
+      "Senior PM | Berlin, Germany | r604800"
+    )
+  })
+
+  it("omits time_range when absent", () => {
+    const entries: ScanEntry[] = [
+      { kind: "linkedin", keywords: "Senior PM", location: "Berlin" },
+    ]
+    expect(formatLinkedInText(entries)).toBe("Senior PM | Berlin")
+  })
+
+  it("round-trips through parse → format", () => {
+    const text = "Senior PM | Berlin, Germany | r604800"
+    expect(formatLinkedInText(parseLinkedInText(text))).toBe(text)
+  })
+
+  it("returns '' when no LinkedIn entries", () => {
+    expect(
+      formatLinkedInText([{ name: "Stripe", careers_url: "https://x.com" }])
+    ).toBe("")
   })
 })

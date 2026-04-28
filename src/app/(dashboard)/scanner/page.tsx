@@ -36,7 +36,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/status-badge"
 import {
   formatCompaniesText,
+  formatLinkedInText,
   parseCompaniesText,
+  parseLinkedInText,
 } from "@/lib/scanner/text-config"
 import type { ScanEntry } from "@/lib/scanner"
 
@@ -54,6 +56,7 @@ interface ScanResult {
 interface ScanConfig {
   id?: string
   companies: string
+  linkedinSearches: string
   positiveKeywords: string
   negativeKeywords: string
   frequency: string
@@ -126,6 +129,7 @@ export default function ScannerPage() {
   const [configOpen, setConfigOpen] = useState(false)
   const [config, setConfig] = useState<ScanConfig>({
     companies: "",
+    linkedinSearches: "",
     positiveKeywords: "",
     negativeKeywords: "",
     frequency: "7",
@@ -155,12 +159,16 @@ export default function ScannerPage() {
           // Load config from scan if available
           const fullScan = data.scans?.[0]
           if (fullScan) {
-            // portalsConfig is now an array of ScanEntry; old broken saves
-            // stored { companies: string } — fall back gracefully.
+            // portalsConfig is now an array of ScanEntry (mixed ATS +
+            // LinkedIn); old broken saves stored { companies: string } —
+            // fall back gracefully.
             let companiesText = ""
+            let linkedinText = ""
             const pc = fullScan.portalsConfig
             if (Array.isArray(pc)) {
-              companiesText = formatCompaniesText(pc as ScanEntry[]).text
+              const entries = pc as ScanEntry[]
+              companiesText = formatCompaniesText(entries).text
+              linkedinText = formatLinkedInText(entries)
             } else if (
               pc &&
               typeof pc === "object" &&
@@ -168,18 +176,20 @@ export default function ScannerPage() {
             ) {
               companiesText = (pc as { companies: string }).companies
             }
-            // titleFilter.positive/negative are now string[] (post-fix).
-            // Old saves stored them as a single string — handle both shapes.
+            // titleFilter.positive/negative are string[] post-fix; old saves
+            // stored them as a single comma-separated string. Render both as
+            // a comma-joined string for the single-line Input.
             const tf = fullScan.titleFilter as
               | { positive?: string | string[]; negative?: string | string[] }
               | undefined
-            const toLines = (v: string | string[] | undefined) =>
-              Array.isArray(v) ? v.join("\n") : v ?? ""
+            const toCsv = (v: string | string[] | undefined) =>
+              Array.isArray(v) ? v.join(", ") : v ?? ""
             setConfig((prev) => ({
               ...prev,
               companies: companiesText,
-              positiveKeywords: toLines(tf?.positive),
-              negativeKeywords: toLines(tf?.negative),
+              linkedinSearches: linkedinText,
+              positiveKeywords: toCsv(tf?.positive),
+              negativeKeywords: toCsv(tf?.negative),
               frequency: String(fullScan.frequencyDays ?? 7),
               enabled: fullScan.enabled,
             }))
@@ -225,18 +235,21 @@ export default function ScannerPage() {
   async function handleConfigSave() {
     setConfigSaving(true)
     try {
-      // Parse the textarea (Name | URL per line) into a real ScanEntry[]
-      // — the API validates Array.isArray(portalsConfig) and previously
-      // 400'd silently because we sent an object.
-      const portalsConfig = parseCompaniesText(config.companies)
-      // titleFilter expects positive/negative as string[] per the
-      // TitleFilterConfig in lib/scanner — split the text-area lines.
+      // Both textareas merge into a single ScanEntry[] for portalsConfig.
+      // Companies live in the ATS textarea (Name | URL per line); LinkedIn
+      // searches live in their own textarea (keywords | location | time_range).
+      const portalsConfig: ScanEntry[] = [
+        ...parseCompaniesText(config.companies),
+        ...parseLinkedInText(config.linkedinSearches),
+      ]
+      // Keyword inputs are single-line, comma-separated. Earlier I split on
+      // \n by mistake — fixed here to split on `,`.
       const positive = config.positiveKeywords
-        .split("\n")
+        .split(",")
         .map((s) => s.trim())
         .filter(Boolean)
       const negative = config.negativeKeywords
-        .split("\n")
+        .split(",")
         .map((s) => s.trim())
         .filter(Boolean)
       const payload = {
@@ -364,6 +377,31 @@ export default function ScannerPage() {
                 }
                 rows={8}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="linkedinSearches">
+                LinkedIn Searches (one per line: keywords | location | time_range)
+              </Label>
+              <Textarea
+                id="linkedinSearches"
+                value={config.linkedinSearches}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    linkedinSearches: e.target.value,
+                  }))
+                }
+                placeholder={
+                  "Senior Product Manager | Berlin, Germany | r604800\n" +
+                  "Product Operations | Dubai, United Arab Emirates"
+                }
+                rows={4}
+              />
+              <p className="text-xs text-muted-foreground">
+                Hits LinkedIn&apos;s unauthenticated jobs-guest endpoint. <code>time_range</code> is optional —{" "}
+                <code>r604800</code> = past 7 days, <code>r86400</code> = past 24 h, <code>r2592000</code> = past 30 days. Defaults to 7 days when omitted.
+              </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
