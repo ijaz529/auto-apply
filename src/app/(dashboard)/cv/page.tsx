@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   Loader2,
   Upload,
@@ -31,10 +31,31 @@ interface ScanCv {
   fileName: string
 }
 
+interface DiscoverMeta {
+  companiesScanned: number
+  totalJobsFound: number
+  signalsUsed?: { domains: string[]; seniority: string[]; locations: string[] }
+}
+
+// localStorage key for cross-navigation persistence. Bumping the suffix
+// invalidates older payloads if the shape changes.
+const STORAGE_KEY = "cv-scanner-state-v1"
+
+interface PersistedState {
+  scanCv: ScanCv | null
+  preferences: string
+  discoverJobs: DiscoverJob[]
+  discoverMeta: DiscoverMeta | null
+  page: number
+  groupBy: "none" | "company" | "location"
+}
+
 export default function CVPage() {
   // CV is held in component state only — never written to the user's profile.
   // /profile owns the primary CV; this scanner exists for one-off scans of
-  // anyone's CV (your own draft, a friend's, etc).
+  // anyone's CV (your own draft, a friend's, etc). State persists across
+  // navigations via localStorage so the scan results don't disappear when the
+  // user leaves the tab and comes back; replaced on the next scan.
   const [scanCv, setScanCv] = useState<ScanCv | null>(null)
   const [cvUploading, setCvUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -42,16 +63,52 @@ export default function CVPage() {
 
   const [discoverJobs, setDiscoverJobs] = useState<DiscoverJob[]>([])
   const [discovering, setDiscovering] = useState(false)
-  const [discoverMeta, setDiscoverMeta] = useState<{
-    companiesScanned: number
-    totalJobsFound: number
-    signalsUsed?: { domains: string[]; seniority: string[]; locations: string[] }
-  } | null>(null)
+  const [discoverMeta, setDiscoverMeta] = useState<DiscoverMeta | null>(null)
   const [discoverError, setDiscoverError] = useState<string | null>(null)
   const [addingJobUrl, setAddingJobUrl] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [groupBy, setGroupBy] = useState<"none" | "company" | "location">("none")
   const PAGE_SIZE = 15
+
+  // Hydrate-from-localStorage gate: set true once after first read so the
+  // persistence effect doesn't immediately overwrite localStorage with the
+  // empty initial state on mount.
+  const [hydrated, setHydrated] = useState(false)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<PersistedState>
+        if (parsed.scanCv) setScanCv(parsed.scanCv)
+        if (parsed.preferences) setPreferences(parsed.preferences)
+        if (Array.isArray(parsed.discoverJobs)) setDiscoverJobs(parsed.discoverJobs)
+        if (parsed.discoverMeta) setDiscoverMeta(parsed.discoverMeta)
+        if (typeof parsed.page === "number") setPage(parsed.page)
+        if (parsed.groupBy) setGroupBy(parsed.groupBy)
+      }
+    } catch {
+      /* corrupt blob — ignore and start fresh */
+    }
+    setHydrated(true)
+  }, [])
+
+  useEffect(() => {
+    if (!hydrated) return
+    try {
+      const payload: PersistedState = {
+        scanCv,
+        preferences,
+        discoverJobs,
+        discoverMeta,
+        page,
+        groupBy,
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+    } catch {
+      /* quota exceeded — ignore, persistence is best-effort */
+    }
+  }, [hydrated, scanCv, preferences, discoverJobs, discoverMeta, page, groupBy])
 
   async function handleCvUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
