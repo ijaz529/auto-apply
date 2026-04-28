@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { buildStrategyUserContent } from "./strategy"
 
 const baseCtx = {
@@ -100,5 +100,129 @@ describe("buildStrategyUserContent", () => {
     expect(ix("## Candidate Target Roles")).toBeLessThan(
       ix("## Candidate Preferences")
     )
+  })
+})
+
+// ── Orchestration test (mocks Prisma + Anthropic SDK) ──────────────
+
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    job: { findFirst: vi.fn() },
+    profile: { findUnique: vi.fn() },
+  },
+}))
+
+const mockMessagesParse = vi.fn()
+
+vi.mock("@anthropic-ai/sdk", () => ({
+  default: vi.fn().mockImplementation(() => ({
+    messages: { parse: mockMessagesParse },
+  })),
+}))
+
+vi.mock("@anthropic-ai/sdk/helpers/zod", () => ({
+  zodOutputFormat: () => ({}),
+}))
+
+import { generateJobStrategy } from "./strategy"
+import { prisma } from "@/lib/db"
+
+const mockJobFind = vi.mocked(prisma.job.findFirst)
+const mockProfileFind = vi.mocked(prisma.profile.findUnique)
+
+const fakeStrategy = {
+  research: "## Research markdown",
+  negotiation: "## Negotiation markdown",
+}
+
+describe("generateJobStrategy", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.ANTHROPIC_API_KEY = "sk-test"
+    mockMessagesParse.mockResolvedValue({
+      parsed_output: fakeStrategy,
+      stop_reason: "end_turn",
+    })
+  })
+
+  it("throws when ANTHROPIC_API_KEY is unset", async () => {
+    delete process.env.ANTHROPIC_API_KEY
+    await expect(generateJobStrategy("j1", "u1")).rejects.toThrow(
+      /ANTHROPIC_API_KEY/
+    )
+  })
+
+  it("throws Job not found when the job doesn't exist for the user", async () => {
+    mockJobFind.mockResolvedValue(null)
+    await expect(generateJobStrategy("j1", "u1")).rejects.toThrow(
+      /Job not found/
+    )
+  })
+
+  it("throws when messages.parse returns null parsed_output", async () => {
+    mockJobFind.mockResolvedValue({
+      id: "j1",
+      company: "Acme",
+      role: "PM",
+      location: null,
+      jdText: null,
+      evaluation: null,
+    } as never)
+    mockProfileFind.mockResolvedValue(null)
+    mockMessagesParse.mockResolvedValue({
+      parsed_output: null,
+      stop_reason: "refusal",
+    })
+    await expect(generateJobStrategy("j1", "u1")).rejects.toThrow(/refusal/)
+  })
+
+  it("happy path: returns parsed research + negotiation", async () => {
+    mockJobFind.mockResolvedValue({
+      id: "j1",
+      company: "Acme",
+      role: "PM",
+      location: "Berlin",
+      jdText: "JD body",
+      evaluation: {
+        score: 4.2,
+        archetype: "Product Manager",
+        reportMarkdown: "# Eval",
+      },
+    } as never)
+    mockProfileFind.mockResolvedValue({
+      preferredModel: "opus",
+      preferences: "Remote",
+      targetRoles: ["Senior PM"],
+    } as never)
+
+    const out = await generateJobStrategy("j1", "u1")
+    expect(out).toEqual(fakeStrategy)
+    expect(mockMessagesParse).toHaveBeenCalledTimes(1)
+
+    // User content should reference the job + the eval report.
+    const call = mockMessagesParse.mock.calls[0][0] as {
+      messages: Array<{ content: string }>
+    }
+    expect(call.messages[0].content).toContain("Acme")
+    expect(call.messages[0].content).toContain("# Eval")
+    expect(call.messages[0].content).toContain("Senior PM")
+  })
+
+  it("uses the preferredModel mapping (sonnet vs opus)", async () => {
+    mockJobFind.mockResolvedValue({
+      id: "j1",
+      company: "Acme",
+      role: "PM",
+      location: null,
+      jdText: null,
+      evaluation: null,
+    } as never)
+    mockProfileFind.mockResolvedValue({
+      preferredModel: "sonnet",
+    } as never)
+
+    await generateJobStrategy("j1", "u1")
+    const call = mockMessagesParse.mock.calls[0][0] as { model: string }
+    expect(call.model).toBe("claude-sonnet-4-6")
   })
 })

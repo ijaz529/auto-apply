@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { GitCompare, Loader2, Check, Trophy } from "lucide-react"
+import { GitCompare, Check, Trophy } from "lucide-react"
 import {
   Card,
   CardContent,
