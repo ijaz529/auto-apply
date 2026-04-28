@@ -16,6 +16,29 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScoreBadge } from "@/components/score-badge"
 
+interface BlockerStat {
+  blocker: string
+  frequency: number
+  percentage: number
+}
+
+interface TechStackGap {
+  skill: string
+  frequency: number
+}
+
+interface ScoreThreshold {
+  recommended: number
+  reasoning: string
+  positiveRange: string
+}
+
+interface RichRecommendation {
+  action: string
+  reasoning: string
+  impact: "high" | "medium" | "low"
+}
+
 interface AnalyticsData {
   totalEvaluated: number
   totalApplied: number
@@ -36,7 +59,11 @@ interface AnalyticsData {
     count: number
     avgScore: number
   }[]
-  recommendations?: string[]
+  blockers: BlockerStat[]
+  techStackGaps: TechStackGap[]
+  scoreThreshold: ScoreThreshold | null
+  recommendations: RichRecommendation[]
+  insufficientData: { current: number; required: number } | null
 }
 
 interface FollowUpData {
@@ -67,7 +94,11 @@ const emptyAnalytics: AnalyticsData = {
   funnel: [],
   scoreDistribution: [],
   topArchetypes: [],
+  blockers: [],
+  techStackGaps: [],
+  scoreThreshold: null,
   recommendations: [],
+  insufficientData: null,
 }
 
 function StatsSkeleton() {
@@ -115,16 +146,68 @@ export default function AnalyticsPage() {
 
       if (patternsRes.ok) {
         const json = await patternsRes.json()
-        setData({
-          totalEvaluated: json.totalEvaluated ?? json.total ?? 0,
-          totalApplied: json.totalApplied ?? 0,
-          responseRate: json.responseRate ?? 0,
-          avgScore: json.avgScore ?? 0,
-          funnel: json.funnel ?? [],
-          scoreDistribution: json.scoreDistribution ?? [],
-          topArchetypes: json.topArchetypes ?? [],
-          recommendations: json.recommendations ?? [],
-        })
+        if (json?.ok === true) {
+          // Funnel comes back as Record<status, count>; render in canonical order.
+          const funnelOrder = [
+            "evaluated",
+            "applied",
+            "responded",
+            "interview",
+            "offer",
+            "rejected",
+            "discarded",
+            "skip",
+          ]
+          const funnel = funnelOrder
+            .filter((stage) => (json.funnel?.[stage] ?? 0) > 0)
+            .map((stage) => ({
+              stage: stage[0].toUpperCase() + stage.slice(1),
+              count: json.funnel[stage] as number,
+            }))
+
+          const total = json.metadata?.total ?? 0
+          const positive = json.metadata?.byOutcome?.positive ?? 0
+          const responseRate =
+            total > 0 ? Math.round((positive / total) * 100) : 0
+
+          // archetypeBreakdown → topArchetypes shape
+          const topArchetypes = ((json.archetypeBreakdown ?? []) as Array<{
+            archetype: string
+            total: number
+            conversionRate: number
+          }>)
+            .slice(0, 6)
+            .map((a) => ({
+              name: a.archetype,
+              count: a.total,
+              avgScore: a.conversionRate / 20, // map 0-100% → 0-5 for ScoreBadge colour
+            }))
+
+          setData({
+            totalEvaluated: total,
+            totalApplied: positive,
+            responseRate,
+            avgScore: json.avgScore ?? 0,
+            funnel,
+            scoreDistribution: [], // not yet computed server-side
+            topArchetypes,
+            blockers: json.blockerAnalysis ?? [],
+            techStackGaps: json.techStackGaps ?? [],
+            scoreThreshold: json.scoreThreshold ?? null,
+            recommendations: json.recommendations ?? [],
+            insufficientData: null,
+          })
+        } else if (json?.reason === "insufficient_data") {
+          setData({
+            ...emptyAnalytics,
+            insufficientData: {
+              current: json.metadata?.beyondEvaluated ?? 0,
+              required: json.metadata?.threshold ?? 5,
+            },
+          })
+        } else {
+          setData(emptyAnalytics)
+        }
       }
 
       if (followUpRes.ok) {
@@ -142,7 +225,8 @@ export default function AnalyticsPage() {
     fetchAnalytics()
   }, [fetchAnalytics])
 
-  const hasData = data.totalEvaluated > 0
+  const hasData =
+    data.totalEvaluated > 0 && data.insufficientData === null
 
   if (loading) {
     return (
@@ -177,6 +261,7 @@ export default function AnalyticsPage() {
   }
 
   if (!hasData) {
+    const insufficient = data.insufficientData
     return (
       <div className="space-y-6">
         <div>
@@ -189,11 +274,13 @@ export default function AnalyticsPage() {
           <CardContent>
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <BarChart3 className="h-12 w-12 text-muted-foreground/50 mb-4" />
-              <h3 className="text-lg font-medium">No data yet</h3>
+              <h3 className="text-lg font-medium">
+                {insufficient ? "Not enough data yet" : "No data yet"}
+              </h3>
               <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-                Analytics will appear once you have evaluated and applied to
-                several jobs. Track rejection patterns, score distributions, and
-                response rates.
+                {insufficient
+                  ? `Apply (or otherwise advance) at least ${insufficient.required} jobs beyond "Evaluated" to surface meaningful patterns. Currently ${insufficient.current}/${insufficient.required}.`
+                  : "Analytics will appear once you have evaluated and applied to several jobs. Track rejection patterns, score distributions, and response rates."}
               </p>
             </div>
           </CardContent>
@@ -449,7 +536,78 @@ export default function AnalyticsPage() {
         </CardContent>
       </Card>
 
-      {/* Recommendations */}
+      {/* Blocker Analysis + Tech Stack Gaps */}
+      {(data.blockers.length > 0 || data.techStackGaps.length > 0) && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          {data.blockers.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Top Blockers</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {data.blockers.map((b) => (
+                    <div
+                      key={b.blocker}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <span className="capitalize">
+                        {b.blocker.replace(/-/g, " ")}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {b.frequency}× ({b.percentage}%)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          {data.techStackGaps.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Tech Stack Gaps</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {data.techStackGaps.slice(0, 12).map((g) => (
+                    <Badge key={g.skill} variant="outline">
+                      {g.skill} <span className="ml-1 text-muted-foreground">×{g.frequency}</span>
+                    </Badge>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-3">
+                  Stack tokens that recur in gaps on negative / self-filtered
+                  outcomes.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Score threshold */}
+      {data.scoreThreshold && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Recommended Score Threshold</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-3">
+              <ScoreBadge score={data.scoreThreshold.recommended} />
+              <div className="text-sm">
+                <p>{data.scoreThreshold.reasoning}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Positive-outcome score range:{" "}
+                  {data.scoreThreshold.positiveRange}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Recommendations (now structured: action / reasoning / impact) */}
       {data.recommendations && data.recommendations.length > 0 && (
         <Card>
           <CardHeader>
@@ -459,14 +617,27 @@ export default function AnalyticsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-2">
+            <ul className="space-y-3">
               {data.recommendations.map((rec, idx) => (
-                <li
-                  key={idx}
-                  className="flex items-start gap-2 text-sm"
-                >
-                  <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-primary flex-shrink-0" />
-                  {rec}
+                <li key={idx} className="space-y-1">
+                  <div className="flex items-start gap-2">
+                    <Badge
+                      variant={
+                        rec.impact === "high"
+                          ? "destructive"
+                          : rec.impact === "medium"
+                            ? "default"
+                            : "secondary"
+                      }
+                      className="text-xs uppercase"
+                    >
+                      {rec.impact}
+                    </Badge>
+                    <p className="text-sm font-medium">{rec.action}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground ml-12">
+                    {rec.reasoning}
+                  </p>
                 </li>
               ))}
             </ul>
