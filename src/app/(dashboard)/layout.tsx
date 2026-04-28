@@ -52,11 +52,22 @@ export default function DashboardLayout({
         </div>
       </header>
       <nav className="border-b">
-        <div className="max-w-2xl mx-auto flex px-4">
+        <div className="max-w-4xl mx-auto flex px-4 overflow-x-auto">
+          <Link
+            href="/dashboard"
+            className={cn(
+              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
+              pathname === "/" || pathname.startsWith("/dashboard")
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Dashboard
+          </Link>
           <Link
             href="/cv"
             className={cn(
-              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
               pathname.startsWith("/cv")
                 ? "border-primary text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
@@ -67,7 +78,7 @@ export default function DashboardLayout({
           <Link
             href="/jobs"
             className={cn(
-              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
               pathname.startsWith("/jobs")
                 ? "border-primary text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
@@ -76,9 +87,20 @@ export default function DashboardLayout({
             Jobs
           </Link>
           <Link
+            href="/scanner"
+            className={cn(
+              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
+              pathname.startsWith("/scanner")
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Scanner
+          </Link>
+          <Link
             href="/applications"
             className={cn(
-              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
               pathname.startsWith("/applications")
                 ? "border-primary text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
@@ -89,7 +111,7 @@ export default function DashboardLayout({
           <Link
             href="/compare"
             className={cn(
-              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
               pathname.startsWith("/compare")
                 ? "border-primary text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
@@ -98,9 +120,20 @@ export default function DashboardLayout({
             Compare
           </Link>
           <Link
+            href="/analytics"
+            className={cn(
+              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
+              pathname.startsWith("/analytics")
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Analytics
+          </Link>
+          <Link
             href="/settings"
             className={cn(
-              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
               pathname.startsWith("/settings")
                 ? "border-primary text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
