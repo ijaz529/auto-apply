@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import {
   Loader2,
   Search,
@@ -11,14 +11,40 @@ import {
   ChevronUp,
   Plus,
   CheckCircle2,
+  GitCompare,
+  Trophy,
+  X,
 } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { ScoreBadge } from "@/components/score-badge"
+import {
+  buildComparison,
+  type ComparisonJob,
+  type ComparisonResult,
+} from "@/lib/analytics/comparison"
+import { cn } from "@/lib/utils"
+
+const MAX_COMPARE = 5
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -27,6 +53,7 @@ interface JobResult {
   company: string
   role: string
   url: string
+  location: string | null
   createdAt: string
   jdText: string | null
   evaluation: {
@@ -36,6 +63,7 @@ interface JobResult {
     reportMarkdown: string
     keywords: string[] | null
     gaps: Array<{ description: string; severity: string; mitigation: string }> | null
+    scoreBreakdown: Record<string, number> | null
   } | null
   application: {
     id: string
@@ -78,7 +106,51 @@ export default function JobsPage() {
   const [similarByJob, setSimilarByJob] = useState<Record<string, SimilarState>>({})
   const [addingJobUrl, setAddingJobUrl] = useState<string | null>(null)
 
+  // Multi-select for inline comparison
+  const [compareSelected, setCompareSelected] = useState<Set<string>>(new Set())
+
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
+
+  function toggleCompare(jobId: string) {
+    setCompareSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(jobId)) {
+        next.delete(jobId)
+        return next
+      }
+      if (next.size >= MAX_COMPARE) return prev
+      next.add(jobId)
+      return next
+    })
+  }
+
+  const compareJobs: ComparisonJob[] = useMemo(
+    () =>
+      jobs
+        .filter((j) => compareSelected.has(j.id) && j.evaluation)
+        .map((j) => ({
+          id: j.id,
+          company: j.company,
+          role: j.role,
+          url: j.url,
+          location: j.location,
+          evaluation: j.evaluation
+            ? {
+                score: j.evaluation.score,
+                archetype: j.evaluation.archetype,
+                legitimacy: j.evaluation.legitimacy,
+                scoreBreakdown: j.evaluation.scoreBreakdown,
+                gaps: j.evaluation.gaps,
+              }
+            : null,
+        })),
+    [jobs, compareSelected]
+  )
+
+  const comparison: ComparisonResult | null = useMemo(
+    () => (compareJobs.length >= 2 ? buildComparison(compareJobs) : null),
+    [compareJobs]
+  )
 
   // ── Data fetching ─────────────────────────────────────────────
 
@@ -388,6 +460,31 @@ export default function JobsPage() {
                           )}
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
+                          {job.evaluation && (
+                            <label
+                              className="inline-flex items-center gap-1 px-2 cursor-pointer text-xs text-muted-foreground hover:text-foreground"
+                              onClick={(e) => e.stopPropagation()}
+                              title={
+                                compareSelected.has(job.id)
+                                  ? "Remove from comparison"
+                                  : compareSelected.size >= MAX_COMPARE
+                                    ? `Max ${MAX_COMPARE} for comparison`
+                                    : "Add to comparison"
+                              }
+                            >
+                              <input
+                                type="checkbox"
+                                checked={compareSelected.has(job.id)}
+                                disabled={
+                                  !compareSelected.has(job.id) &&
+                                  compareSelected.size >= MAX_COMPARE
+                                }
+                                onChange={() => toggleCompare(job.id)}
+                                className="h-3.5 w-3.5"
+                              />
+                              <GitCompare className="h-3.5 w-3.5" />
+                            </label>
+                          )}
                           {job.url && !job.url.startsWith("pasted-") && (
                             <a href={job.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
                               <Button variant="ghost" size="sm"><ExternalLink className="h-3.5 w-3.5" /></Button>
@@ -570,6 +667,128 @@ export default function JobsPage() {
               })
             )}
           </div>
+        </>
+      )}
+
+      {/* Inline comparison — appears once 2+ evaluated jobs are selected */}
+      {compareSelected.size > 0 && (
+        <>
+          <Separator />
+          <Card className="border-primary/30">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <GitCompare className="h-4 w-4" />
+                  Compare ({compareSelected.size}/{MAX_COMPARE})
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setCompareSelected(new Set())}
+                >
+                  <X className="mr-1 h-3.5 w-3.5" />
+                  Clear
+                </Button>
+              </div>
+              {!comparison && (
+                <CardDescription>
+                  Pick at least one more evaluated job to see them
+                  side-by-side.
+                </CardDescription>
+              )}
+            </CardHeader>
+            {comparison && (
+              <CardContent className="space-y-4">
+                {/* Ranking */}
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-medium mb-2">
+                    <Trophy className="h-3.5 w-3.5 text-amber-500" />
+                    Ranking
+                  </h3>
+                  <ol className="space-y-1.5">
+                    {comparison.ranking.map((r) => {
+                      const j = comparison.jobs.find((j) => j.id === r.jobId)!
+                      return (
+                        <li
+                          key={r.jobId}
+                          className="flex items-center justify-between rounded-md border p-2 text-sm"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Badge
+                              variant={r.rank === 1 ? "default" : "secondary"}
+                            >
+                              #{r.rank}
+                            </Badge>
+                            <div>
+                              <p className="font-medium leading-tight">
+                                {j.company}
+                              </p>
+                              <p className="text-xs text-muted-foreground leading-tight">
+                                {j.role}
+                              </p>
+                            </div>
+                          </div>
+                          <ScoreBadge score={r.score} />
+                        </li>
+                      )
+                    })}
+                  </ol>
+                </div>
+
+                {/* Side-by-side matrix */}
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Side-by-side</h3>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[160px]">Dimension</TableHead>
+                          {comparison.jobs.map((j) => (
+                            <TableHead key={j.id} className="min-w-[140px]">
+                              <div className="font-medium">{j.company}</div>
+                              <div className="text-xs text-muted-foreground truncate">
+                                {j.role}
+                              </div>
+                            </TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {[
+                          ...comparison.headline,
+                          ...comparison.dimensions,
+                          comparison.blockerSummary,
+                        ].map((row) => (
+                          <TableRow key={row.key}>
+                            <TableCell className="font-medium text-sm">
+                              {row.label}
+                            </TableCell>
+                            {row.values.map((v, i) => {
+                              const isMax = row.maxIndices.includes(i)
+                              return (
+                                <TableCell
+                                  key={i}
+                                  className={cn(
+                                    "text-sm align-top",
+                                    isMax &&
+                                      "bg-green-50 dark:bg-green-950/30 font-medium"
+                                  )}
+                                >
+                                  {v === null || v === undefined || v === ""
+                                    ? "—"
+                                    : v}
+                                </TableCell>
+                              )
+                            })}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </CardContent>
+            )}
+          </Card>
         </>
       )}
     </div>
