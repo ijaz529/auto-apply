@@ -266,12 +266,16 @@ export default function InterviewPrepPage() {
       })
       if (res.ok) {
         const data = await res.json()
+        // The route returns { prep, cached }, where prep has the long field names
+        // produced by generateInterviewPrep (processOverview, roundBreakdown, etc).
+        // Map to the page's existing short PrepData keys.
+        const prep = data.prep ?? {}
         setPrepData({
-          overview: data.overview ?? "",
-          rounds: data.rounds ?? "",
-          questions: data.questions ?? "",
-          stories: data.stories ?? "",
-          redFlags: data.redFlags ?? "",
+          overview: prep.processOverview ?? "",
+          rounds: prep.roundBreakdown ?? "",
+          questions: prep.likelyQuestions ?? "",
+          stories: prep.starStories ?? "",
+          redFlags: prep.redFlagQuestions ?? "",
         })
         await fetchStories()
       } else {

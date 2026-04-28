@@ -74,6 +74,68 @@ export default function SettingsPage() {
   const [templateSaving, setTemplateSaving] = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
 
+  // Gmail integration state
+  type GmailStatus =
+    | { connected: true; expiresAt: number | null }
+    | { connected: false; reason: string; signInUrl?: string; message?: string }
+    | null
+  const [gmailStatus, setGmailStatus] = useState<GmailStatus>(null)
+  const [gmailStatusLoading, setGmailStatusLoading] = useState(false)
+  const [gmailSyncing, setGmailSyncing] = useState(false)
+  const [gmailSyncMessage, setGmailSyncMessage] = useState<string | null>(null)
+
+  const fetchGmailStatus = useCallback(async () => {
+    setGmailStatusLoading(true)
+    try {
+      const res = await fetch("/api/emails/connect")
+      if (res.ok) {
+        setGmailStatus(await res.json())
+      } else {
+        setGmailStatus({
+          connected: false,
+          reason: "fetch_failed",
+          message: "Could not check Gmail status.",
+        })
+      }
+    } catch {
+      setGmailStatus({
+        connected: false,
+        reason: "fetch_failed",
+        message: "Network error.",
+      })
+    } finally {
+      setGmailStatusLoading(false)
+    }
+  }, [])
+
+  async function handleGmailSync() {
+    setGmailSyncing(true)
+    setGmailSyncMessage(null)
+    try {
+      const res = await fetch("/api/emails/sync", { method: "POST" })
+      const data = await res.json().catch(() => null)
+      if (res.ok && data?.ok) {
+        const fresh = data.newRecords ?? 0
+        const linked = data.linked ?? 0
+        const upgraded = data.applicationsUpgraded ?? 0
+        setGmailSyncMessage(
+          `Synced. ${fresh} new email${fresh === 1 ? "" : "s"}, ${linked} linked to applications, ${upgraded} application status${upgraded === 1 ? "" : "es"} upgraded.`
+        )
+      } else {
+        setGmailSyncMessage(
+          (data && (data.message || data.error)) ||
+            "Sync failed. Try reconnecting Gmail."
+        )
+      }
+    } catch {
+      setGmailSyncMessage("Network error. Check your connection.")
+    } finally {
+      setGmailSyncing(false)
+      // Refresh status in case the sync surfaced a token issue.
+      void fetchGmailStatus()
+    }
+  }
+
   const fetchProfile = useCallback(async () => {
     try {
       const res = await fetch("/api/profile")
@@ -123,7 +185,8 @@ export default function SettingsPage() {
   useEffect(() => {
     fetchProfile()
     fetchCv()
-  }, [fetchProfile, fetchCv])
+    fetchGmailStatus()
+  }, [fetchProfile, fetchCv, fetchGmailStatus])
 
   async function handleProfileSave() {
     setProfileSaving(true)
@@ -647,23 +710,91 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle>Email Integration</CardTitle>
               <CardDescription>
-                Connect your email to automatically track application
-                responses and update statuses.
+                Connect your Gmail to monitor application responses, interview
+                invites, offers, and rejections — the tracker updates each
+                application&apos;s status automatically based on what arrives.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Mail className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                <h3 className="text-lg font-medium">Connect Gmail</h3>
-                <p className="text-sm text-muted-foreground mt-1 max-w-sm mb-6">
-                  When connected, the system will monitor your inbox for
-                  application responses, interview invitations, and status
-                  updates -- and automatically update your tracker.
-                </p>
-                <Button disabled variant="outline">
-                  <Mail className="mr-2 h-4 w-4" />
-                  Connect Gmail -- Coming Soon
-                </Button>
+              <div className="space-y-4">
+                {gmailStatusLoading && !gmailStatus && (
+                  <p className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Checking Gmail status...
+                  </p>
+                )}
+
+                {gmailStatus?.connected === true && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Check className="h-4 w-4 text-green-600" />
+                      <span className="font-medium">Gmail connected</span>
+                      {gmailStatus.expiresAt && (
+                        <span className="text-xs text-muted-foreground">
+                          token valid until{" "}
+                          {new Date(gmailStatus.expiresAt * 1000).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        onClick={handleGmailSync}
+                        disabled={gmailSyncing}
+                        size="sm"
+                      >
+                        {gmailSyncing ? (
+                          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                        )}
+                        Sync now
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          window.location.href = "/api/auth/signin/google"
+                        }}
+                        variant="outline"
+                        size="sm"
+                      >
+                        <Mail className="mr-2 h-3.5 w-3.5" />
+                        Reconnect Gmail
+                      </Button>
+                    </div>
+                    {gmailSyncMessage && (
+                      <p className="text-sm text-muted-foreground">
+                        {gmailSyncMessage}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {gmailStatus &&
+                  gmailStatus.connected === false &&
+                  gmailStatus.reason !== "fetch_failed" && (
+                    <div className="space-y-3">
+                      <p className="text-sm">
+                        {gmailStatus.message ??
+                          "Gmail isn't connected yet. Sign in with Google to grant inbox access."}
+                      </p>
+                      <Button
+                        onClick={() => {
+                          window.location.href =
+                            gmailStatus.signInUrl ?? "/api/auth/signin/google"
+                        }}
+                      >
+                        <Mail className="mr-2 h-4 w-4" />
+                        Connect Gmail
+                      </Button>
+                    </div>
+                  )}
+
+                {gmailStatus &&
+                  gmailStatus.connected === false &&
+                  gmailStatus.reason === "fetch_failed" && (
+                    <p className="text-sm text-red-600">
+                      {gmailStatus.message ?? "Could not check Gmail status."}
+                    </p>
+                  )}
               </div>
             </CardContent>
           </Card>

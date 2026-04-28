@@ -34,6 +34,11 @@ import {
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/status-badge"
+import {
+  formatCompaniesText,
+  parseCompaniesText,
+} from "@/lib/scanner/text-config"
+import type { ScanEntry } from "@/lib/scanner"
 
 interface ScanResult {
   id: string
@@ -150,20 +155,31 @@ export default function ScannerPage() {
           // Load config from scan if available
           const fullScan = data.scans?.[0]
           if (fullScan) {
+            // portalsConfig is now an array of ScanEntry; old broken saves
+            // stored { companies: string } — fall back gracefully.
+            let companiesText = ""
+            const pc = fullScan.portalsConfig
+            if (Array.isArray(pc)) {
+              companiesText = formatCompaniesText(pc as ScanEntry[]).text
+            } else if (
+              pc &&
+              typeof pc === "object" &&
+              typeof (pc as { companies?: unknown }).companies === "string"
+            ) {
+              companiesText = (pc as { companies: string }).companies
+            }
+            // titleFilter.positive/negative are now string[] (post-fix).
+            // Old saves stored them as a single string — handle both shapes.
+            const tf = fullScan.titleFilter as
+              | { positive?: string | string[]; negative?: string | string[] }
+              | undefined
+            const toLines = (v: string | string[] | undefined) =>
+              Array.isArray(v) ? v.join("\n") : v ?? ""
             setConfig((prev) => ({
               ...prev,
-              companies:
-                typeof fullScan.portalsConfig === "object"
-                  ? (fullScan.portalsConfig as { companies?: string }).companies ?? ""
-                  : "",
-              positiveKeywords:
-                typeof fullScan.titleFilter === "object"
-                  ? (fullScan.titleFilter as { positive?: string }).positive ?? ""
-                  : "",
-              negativeKeywords:
-                typeof fullScan.titleFilter === "object"
-                  ? (fullScan.titleFilter as { negative?: string }).negative ?? ""
-                  : "",
+              companies: companiesText,
+              positiveKeywords: toLines(tf?.positive),
+              negativeKeywords: toLines(tf?.negative),
               frequency: String(fullScan.frequencyDays ?? 7),
               enabled: fullScan.enabled,
             }))
@@ -209,12 +225,23 @@ export default function ScannerPage() {
   async function handleConfigSave() {
     setConfigSaving(true)
     try {
+      // Parse the textarea (Name | URL per line) into a real ScanEntry[]
+      // — the API validates Array.isArray(portalsConfig) and previously
+      // 400'd silently because we sent an object.
+      const portalsConfig = parseCompaniesText(config.companies)
+      // titleFilter expects positive/negative as string[] per the
+      // TitleFilterConfig in lib/scanner — split the text-area lines.
+      const positive = config.positiveKeywords
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean)
+      const negative = config.negativeKeywords
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean)
       const payload = {
-        portalsConfig: { companies: config.companies },
-        titleFilter: {
-          positive: config.positiveKeywords,
-          negative: config.negativeKeywords,
-        },
+        portalsConfig,
+        titleFilter: { positive, negative },
         frequencyDays: parseInt(config.frequency, 10) || 7,
         enabled: config.enabled,
       }
