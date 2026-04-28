@@ -7,6 +7,13 @@ import { LogOut, UserPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
+const NAV_ITEMS = [
+  { href: "/dashboard", label: "Dashboard", isActive: (p: string) => p === "/" || p.startsWith("/dashboard") },
+  { href: "/jobs", label: "Jobs", isActive: (p: string) => p.startsWith("/jobs") },
+  { href: "/cv", label: "CV Scanner", isActive: (p: string) => p.startsWith("/cv") },
+  { href: "/profile", label: "Profile", isActive: (p: string) => p.startsWith("/profile") || p.startsWith("/settings") },
+]
+
 export default function DashboardLayout({
   children,
 }: {
@@ -19,8 +26,8 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
-        <div className="max-w-2xl mx-auto flex h-14 items-center justify-between px-4">
-          <Link href="/cv" className="flex items-center gap-2">
+        <div className="max-w-4xl mx-auto flex h-14 items-center justify-between px-4">
+          <Link href="/dashboard" className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
               AA
             </div>
@@ -53,99 +60,25 @@ export default function DashboardLayout({
       </header>
       <nav className="border-b">
         <div className="max-w-4xl mx-auto flex px-4 overflow-x-auto">
-          <Link
-            href="/dashboard"
-            className={cn(
-              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
-              pathname === "/" || pathname.startsWith("/dashboard")
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            )}
-          >
-            Dashboard
-          </Link>
-          <Link
-            href="/cv"
-            className={cn(
-              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
-              pathname.startsWith("/cv")
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            )}
-          >
-            CV
-          </Link>
-          <Link
-            href="/jobs"
-            className={cn(
-              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
-              pathname.startsWith("/jobs")
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            )}
-          >
-            Jobs
-          </Link>
-          <Link
-            href="/scanner"
-            className={cn(
-              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
-              pathname.startsWith("/scanner")
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            )}
-          >
-            Scanner
-          </Link>
-          <Link
-            href="/applications"
-            className={cn(
-              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
-              pathname.startsWith("/applications")
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            )}
-          >
-            Applied
-          </Link>
-          <Link
-            href="/compare"
-            className={cn(
-              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
-              pathname.startsWith("/compare")
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            )}
-          >
-            Compare
-          </Link>
-          <Link
-            href="/analytics"
-            className={cn(
-              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
-              pathname.startsWith("/analytics")
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            )}
-          >
-            Analytics
-          </Link>
-          <Link
-            href="/settings"
-            className={cn(
-              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
-              pathname.startsWith("/settings")
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            )}
-          >
-            Profile
-          </Link>
+          {NAV_ITEMS.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
+                item.isActive(pathname)
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {item.label}
+            </Link>
+          ))}
         </div>
       </nav>
       <main className={cn(
         "mx-auto p-4 pt-6",
-        pathname.startsWith("/applications") ? "max-w-6xl" : "max-w-2xl"
+        pathname === "/" || pathname.startsWith("/dashboard") ? "max-w-6xl" : "max-w-4xl"
       )}>
         {children}
       </main>
