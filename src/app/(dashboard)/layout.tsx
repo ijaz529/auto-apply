@@ -87,6 +87,17 @@ export default function DashboardLayout({
             Applied
           </Link>
           <Link
+            href="/compare"
+            className={cn(
+              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              pathname.startsWith("/compare")
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Compare
+          </Link>
+          <Link
             href="/settings"
             className={cn(
               "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
