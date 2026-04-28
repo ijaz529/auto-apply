@@ -1,374 +1,358 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import {
-  Briefcase,
-  FileText,
-  MessageSquare,
-  TrendingUp,
-  Plus,
-  Upload,
-  Radar,
-  Clock,
-  ArrowRight,
-  Loader2,
-} from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Download, Upload, Loader2, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ScoreBadge } from "@/components/score-badge"
+import { StatusBadge } from "@/components/status-badge"
+import { cn } from "@/lib/utils"
 
-interface DashboardStats {
-  totalJobs: number
-  applied: number
-  interviews: number
-  avgScore: number | null
-}
-
-interface RecentActivity {
+interface JobRow {
   id: string
   company: string
   role: string
-  status: string
-  score: number | null
-  createdAt: string
+  url: string | null
+  location: string | null
+  evaluation: { score: number; archetype: string | null } | null
+  application: { status: string } | null
 }
 
-interface FollowUpReminder {
-  id: string
-  company: string
-  role: string
-  dueDate: string
-  channel: string
-  daysOverdue: number
+type FilterKey = "all" | "evaluated" | "applied" | "interview" | "top" | "skip"
+
+const FILTERS: Array<{ key: FilterKey; label: string }> = [
+  { key: "all", label: "ALL" },
+  { key: "evaluated", label: "EVALUATED" },
+  { key: "applied", label: "APPLIED" },
+  { key: "interview", label: "INTERVIEW" },
+  { key: "top", label: "TOP ≥4" },
+  { key: "skip", label: "SKIP" },
+]
+
+type Bucket = "applied" | "evaluated" | "interview" | "discarded"
+
+const BUCKET_ORDER: Bucket[] = ["interview", "applied", "evaluated", "discarded"]
+const BUCKET_LABEL: Record<Bucket, string> = {
+  interview: "INTERVIEW",
+  applied: "APPLIED",
+  evaluated: "EVALUATED",
+  discarded: "DISCARDED",
 }
 
-function StatsSkeleton() {
-  return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {[1, 2, 3, 4].map((i) => (
-        <Card key={i}>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <Skeleton className="h-4 w-20" />
-            <Skeleton className="h-4 w-4" />
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-8 w-16 mb-1" />
-            <Skeleton className="h-3 w-24" />
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  )
+function statusOf(j: JobRow): string {
+  return j.application?.status ?? (j.evaluation ? "evaluated" : "pending")
 }
 
-function ActivitySkeleton() {
-  return (
-    <div className="space-y-3">
-      {[1, 2, 3].map((i) => (
-        <div key={i} className="flex items-center justify-between rounded-lg border p-3">
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-3 w-48" />
-          </div>
-          <Skeleton className="h-5 w-16" />
-        </div>
-      ))}
-    </div>
-  )
+function bucketOf(status: string): Bucket {
+  if (status === "applied" || status === "responded") return "applied"
+  if (status === "interview" || status === "offer") return "interview"
+  if (status === "rejected" || status === "discarded" || status === "skip")
+    return "discarded"
+  return "evaluated"
+}
+
+function matchesFilter(j: JobRow, filter: FilterKey): boolean {
+  const status = statusOf(j)
+  const score = j.evaluation?.score ?? 0
+  if (filter === "all") return true
+  if (filter === "top") return score >= 4
+  return bucketOf(status) === filter
 }
 
 export default function DashboardPage() {
-  const firstName = "there"
-
-  const [stats, setStats] = useState<DashboardStats | null>(null)
-  const [activity, setActivity] = useState<RecentActivity[]>([])
-  const [followUps, setFollowUps] = useState<FollowUpReminder[]>([])
+  const [jobs, setJobs] = useState<JobRow[]>([])
+  const [hasCv, setHasCv] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<FilterKey>("all")
+  const [generatingId, setGeneratingId] = useState<string | null>(null)
 
-  const fetchDashboard = useCallback(async () => {
-    try {
-      const [appsRes, jobsRes, followUpRes] = await Promise.all([
-        fetch("/api/applications?limit=100"),
-        fetch("/api/jobs?limit=5"),
-        fetch("/api/analytics/followup").catch(() => null),
-      ])
-
-      // Parse stats from applications
-      if (appsRes.ok) {
-        const appsData = await appsRes.json()
-        const apps = appsData.applications ?? []
-        const applied = apps.filter(
-          (a: { status: string }) => a.status !== "evaluated" && a.status !== "skip"
-        ).length
-        const interviews = apps.filter(
-          (a: { status: string }) => a.status === "interview"
-        ).length
-        const scores = apps
-          .map((a: { job?: { evaluation?: { score?: number } } }) => a.job?.evaluation?.score)
-          .filter((s: unknown): s is number => typeof s === "number")
-        const avgScore =
-          scores.length > 0
-            ? Math.round((scores.reduce((a: number, b: number) => a + b, 0) / scores.length) * 10) / 10
-            : null
-
-        setStats({
-          totalJobs: appsData.pagination?.total ?? apps.length,
-          applied,
-          interviews,
-          avgScore,
-        })
-      }
-
-      // Parse recent activity from jobs
-      if (jobsRes.ok) {
-        const jobsData = await jobsRes.json()
-        const jobs = jobsData.jobs ?? []
-        setActivity(
-          jobs.map((j: {
-            id: string
-            company: string
-            role: string
-            application?: { status: string }
-            evaluation?: { score: number }
-            createdAt: string
-          }) => ({
-            id: j.id,
-            company: j.company,
-            role: j.role,
-            status: j.application?.status ?? "evaluated",
-            score: j.evaluation?.score ?? null,
-            createdAt: j.createdAt,
-          }))
-        )
-      }
-
-      // Parse follow-ups
-      if (followUpRes && followUpRes.ok) {
-        const followUpData = await followUpRes.json()
-        const reminders = (followUpData.upcoming ?? []).slice(0, 3)
-        setFollowUps(
-          reminders.map((f: {
-            id: string
-            application: { job: { company: string; role: string } }
-            dueDate: string
-            channel: string
-          }) => {
-            const due = new Date(f.dueDate)
-            const now = new Date()
-            const diffMs = now.getTime() - due.getTime()
-            const daysOverdue = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-            return {
-              id: f.id,
-              company: f.application?.job?.company ?? "Unknown",
-              role: f.application?.job?.role ?? "Unknown",
-              dueDate: f.dueDate,
-              channel: f.channel,
-              daysOverdue: Math.max(0, daysOverdue),
-            }
-          })
-        )
-      }
-    } catch {
-      // silently fail
-    } finally {
-      setLoading(false)
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([
+      fetch("/api/jobs?limit=200").then((r) => (r.ok ? r.json() : { jobs: [] })),
+      fetch("/api/cv").then((r) => (r.ok ? r.json() : { markdown: "" })),
+    ])
+      .then(([jobsRes, cvRes]) => {
+        if (cancelled) return
+        setJobs(jobsRes?.jobs ?? [])
+        setHasCv(Boolean((cvRes?.markdown ?? "").trim()))
+      })
+      .catch(() => {
+        if (!cancelled) setJobs([])
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
     }
   }, [])
 
-  useEffect(() => {
-    fetchDashboard()
-  }, [fetchDashboard])
+  const stats = useMemo(() => {
+    const counts = { applied: 0, evaluated: 0, interview: 0, discarded: 0 }
+    let scoreSum = 0
+    let scored = 0
+    for (const j of jobs) {
+      counts[bucketOf(statusOf(j))]++
+      if (j.evaluation?.score != null) {
+        scoreSum += j.evaluation.score
+        scored++
+      }
+    }
+    return {
+      total: jobs.length,
+      avg: scored ? scoreSum / scored : null,
+      ...counts,
+    }
+  }, [jobs])
 
-  const statCards = [
-    {
-      title: "Total Jobs",
-      value: stats?.totalJobs ?? 0,
-      icon: Briefcase,
-      description: "Jobs tracked",
-    },
-    {
-      title: "Applied",
-      value: stats?.applied ?? 0,
-      icon: FileText,
-      description: "Applications sent",
-    },
-    {
-      title: "Interviews",
-      value: stats?.interviews ?? 0,
-      icon: MessageSquare,
-      description: "In progress",
-    },
-    {
-      title: "Avg Score",
-      value: stats?.avgScore != null ? stats.avgScore.toFixed(1) : "--",
-      icon: TrendingUp,
-      description: "Fit score",
-    },
-  ]
+  const filtered = useMemo(
+    () => jobs.filter((j) => matchesFilter(j, filter)),
+    [jobs, filter]
+  )
+
+  const grouped = useMemo(() => {
+    const map: Record<Bucket, JobRow[]> = {
+      interview: [],
+      applied: [],
+      evaluated: [],
+      discarded: [],
+    }
+    for (const j of filtered) map[bucketOf(statusOf(j))].push(j)
+    for (const b of BUCKET_ORDER) {
+      map[b].sort(
+        (a, z) => (z.evaluation?.score ?? 0) - (a.evaluation?.score ?? 0)
+      )
+    }
+    return map
+  }, [filtered])
+
+  async function handleTailorCv(jobId: string) {
+    setGeneratingId(jobId)
+    try {
+      const res = await fetch("/api/cv/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId }),
+      })
+      if (res.ok) {
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        const job = jobs.find((j) => j.id === jobId)
+        a.download = `cv-${
+          job?.company?.toLowerCase().replace(/\s+/g, "-") ?? "tailored"
+        }.pdf`
+        a.click()
+        URL.revokeObjectURL(url)
+      }
+    } finally {
+      setGeneratingId(null)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    )
+  }
+
+  if (hasCv === false) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+          <Upload className="h-10 w-10 text-muted-foreground mb-4" />
+          <h2 className="text-xl font-semibold mb-2">Upload your CV to start</h2>
+          <p className="text-sm text-muted-foreground max-w-md mb-6">
+            Your primary CV powers every evaluation, tailored CV, and
+            interview-prep on this dashboard. Upload it once on the Profile
+            page to unlock the pipeline.
+          </p>
+          <Link
+            href="/profile"
+            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Go to Profile
+          </Link>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">
-          Welcome back, {firstName}
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Here is an overview of your job search pipeline.
-        </p>
+    <div className="space-y-4 font-mono text-sm">
+      {/* Header */}
+      <div className="flex items-baseline justify-between border-b pb-2">
+        <h1 className="text-base font-bold tracking-wider">CAREER PIPELINE</h1>
+        <div className="text-xs text-muted-foreground">
+          {stats.total} offers
+          {stats.avg != null && (
+            <span className="ml-2">| Avg {stats.avg.toFixed(1)}/5</span>
+          )}
+        </div>
       </div>
 
-      {/* Stats */}
-      {loading ? (
-        <StatsSkeleton />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {statCards.map((stat) => (
-            <Card key={stat.title}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  {stat.title}
-                </CardTitle>
-                <stat.icon className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {stat.description}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+      {/* Filter tabs */}
+      <div className="flex flex-wrap gap-1">
+        {FILTERS.map((f) => {
+          const count =
+            f.key === "all"
+              ? stats.total
+              : f.key === "top"
+                ? jobs.filter((j) => (j.evaluation?.score ?? 0) >= 4).length
+                : f.key === "evaluated"
+                  ? stats.evaluated
+                  : f.key === "applied"
+                    ? stats.applied
+                    : f.key === "interview"
+                      ? stats.interview
+                      : stats.discarded
+          const active = filter === f.key
+          return (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setFilter(f.key)}
+              className={cn(
+                "px-2 py-1 text-xs font-bold tracking-wider transition-colors",
+                active
+                  ? "text-foreground border-b-2 border-primary"
+                  : "text-muted-foreground hover:text-foreground border-b-2 border-transparent"
+              )}
+            >
+              {f.label} ({count})
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Stats line */}
+      <div className="text-xs text-muted-foreground">
+        Applied:{stats.applied} &nbsp; Evaluated:{stats.evaluated} &nbsp;
+        Interview:{stats.interview} &nbsp; Discarded:{stats.discarded}
+        <span className="ml-3">
+          [Sort: score] [View: {filter === "all" ? "grouped" : "flat"}]{" "}
+          {filtered.length} shown
+        </span>
+      </div>
+
+      {/* Empty state */}
+      {filtered.length === 0 && (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-sm text-muted-foreground mb-4">
+              No jobs match this filter.
+            </p>
+            <Link
+              href="/jobs"
+              className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
+            >
+              Add a job
+            </Link>
+          </CardContent>
+        </Card>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Recent Activity */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Recent Activity</CardTitle>
-            <Button variant="ghost" size="sm" onClick={() => window.location.href = "/jobs"}>
-              View all
-              <ArrowRight className="ml-1 h-3 w-3" />
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <ActivitySkeleton />
-            ) : activity.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <Briefcase className="h-10 w-10 text-muted-foreground/50 mb-3" />
-                <p className="text-sm text-muted-foreground">
-                  No jobs tracked yet. Add a job URL to get started.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {activity.map((item) => (
-                  <Link
-                    key={item.id}
-                    href={`/jobs/${item.id}`}
-                    className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50"
-                  >
-                    <div>
-                      <p className="text-sm font-medium">{item.company}</p>
-                      <p className="text-xs text-muted-foreground">{item.role}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {item.score != null && (
-                        <span className="text-xs font-medium">
-                          {item.score.toFixed(1)}/5
-                        </span>
-                      )}
-                      <Badge
-                        variant={
-                          item.status === "applied"
-                            ? "default"
-                            : item.status === "interview"
-                              ? "default"
-                              : "secondary"
-                        }
-                      >
-                        {item.status}
-                      </Badge>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {/* Rows: grouped when ALL, flat otherwise */}
+      {filter === "all"
+        ? BUCKET_ORDER.map((b) =>
+            grouped[b].length === 0 ? null : (
+              <section key={b}>
+                <div className="text-xs text-muted-foreground border-b border-dashed pb-1 mb-1">
+                  ── {BUCKET_LABEL[b]} ({grouped[b].length}) ──
+                </div>
+                <div>
+                  {grouped[b].map((j) => (
+                    <PipelineRow
+                      key={j.id}
+                      job={j}
+                      onTailor={handleTailorCv}
+                      generating={generatingId === j.id}
+                    />
+                  ))}
+                </div>
+              </section>
+            )
+          )
+        : filtered
+            .sort((a, z) => (z.evaluation?.score ?? 0) - (a.evaluation?.score ?? 0))
+            .map((j) => (
+              <PipelineRow
+                key={j.id}
+                job={j}
+                onTailor={handleTailorCv}
+                generating={generatingId === j.id}
+              />
+            ))}
+    </div>
+  )
+}
 
-        {/* Follow-up Reminders */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Follow-up Reminders</CardTitle>
-            <Button variant="ghost" size="sm" onClick={() => window.location.href = "/applications"}>
-              View all
-              <ArrowRight className="ml-1 h-3 w-3" />
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <ActivitySkeleton />
-            ) : followUps.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <Clock className="h-10 w-10 text-muted-foreground/50 mb-3" />
-                <p className="text-sm text-muted-foreground">
-                  No follow-ups due. Apply to jobs to start tracking.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {followUps.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between rounded-lg border p-3"
-                  >
-                    <div>
-                      <p className="text-sm font-medium">{item.company}</p>
-                      <p className="text-xs text-muted-foreground">{item.role}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        {item.channel}
-                      </Badge>
-                      {item.daysOverdue > 0 ? (
-                        <Badge variant="destructive" className="text-xs">
-                          {item.daysOverdue}d overdue
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(item.dueDate).toLocaleDateString()}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+function PipelineRow({
+  job,
+  onTailor,
+  generating,
+}: {
+  job: JobRow
+  onTailor: (id: string) => void
+  generating: boolean
+}) {
+  const status = statusOf(job)
+  return (
+    <div className="group flex items-center gap-3 px-2 py-1.5 hover:bg-muted/40 border-b border-border/30 last:border-0">
+      <div className="w-10 shrink-0">
+        {job.evaluation?.score != null ? (
+          <ScoreBadge score={job.evaluation.score} />
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )}
       </div>
-
-      {/* Quick Actions */}
-      <div>
-        <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
-        <div className="flex flex-wrap gap-3">
-          <Button onClick={() => window.location.href = "/jobs"}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Job URLs
-          </Button>
-          <Button variant="outline" onClick={() => window.location.href = "/settings"}>
-            <Upload className="mr-2 h-4 w-4" />
-            Upload CV
-          </Button>
-          <Button variant="outline" onClick={() => window.location.href = "/scanner"}>
-            <Radar className="mr-2 h-4 w-4" />
-            Run Scanner
-          </Button>
-        </div>
+      <Link
+        href={`/jobs/${job.id}`}
+        className="flex-1 min-w-0 grid grid-cols-[1fr_2fr_1fr] gap-3 items-baseline hover:underline"
+      >
+        <span className="font-bold truncate">{job.company}</span>
+        <span className="truncate text-muted-foreground">{job.role}</span>
+        <span className="truncate text-xs text-muted-foreground">
+          {job.location ?? "—"}
+        </span>
+      </Link>
+      <div className="w-24 shrink-0">
+        <StatusBadge status={status} className="text-[10px]" />
+      </div>
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 px-2"
+          onClick={() => onTailor(job.id)}
+          disabled={generating}
+          title="Download tailored CV"
+        >
+          {generating ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Download className="h-3.5 w-3.5" />
+          )}
+        </Button>
+        {job.url && (
+          <a
+            href={job.url}
+            target="_blank"
+            rel="noreferrer"
+            title="Open posting"
+            className="h-7 w-7 inline-flex items-center justify-center text-muted-foreground hover:text-foreground"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        )}
       </div>
     </div>
   )
