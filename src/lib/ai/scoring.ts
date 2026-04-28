@@ -9,12 +9,12 @@ const MODEL_MAP: Record<PreferredModel, string> = {
 
 /**
  * Map Profile.preferredModel ("sonnet" | "opus" | undefined) to a Claude model ID.
- * Defaults to opus to match the SDK skill's guidance ("default to claude-opus-4-7").
+ * Defaults to sonnet to match run-evaluation's default and minimize per-request cost.
+ * Opt into Opus per-user via Profile.preferredModel = "opus".
  */
 export function mapPreferredModel(model?: string | null): string {
-  if (model === "sonnet") return MODEL_MAP.sonnet
   if (model === "opus") return MODEL_MAP.opus
-  return MODEL_MAP.opus
+  return MODEL_MAP.sonnet
 }
 
 export interface ScoreBreakdown {

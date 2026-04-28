@@ -17,6 +17,10 @@ export async function POST(req: NextRequest) {
   try {
     const userId = await getUserId()
 
+    // ?persist=false → parse-only mode (used by /cv "scan any CV" flow);
+    // default true preserves the existing primary-CV upload behavior.
+    const persist = req.nextUrl.searchParams.get("persist") !== "false"
+
     const formData = await req.formData()
     const file = formData.get("file")
 
@@ -100,23 +104,26 @@ export async function POST(req: NextRequest) {
       ? (JSON.parse(JSON.stringify(cvStructured)) as Prisma.InputJsonValue)
       : undefined
 
-    await prisma.profile.upsert({
-      where: { userId },
-      update: {
-        cvMarkdown: rawText,
-        cvStructured: cvJson,
-      },
-      create: {
-        userId,
-        cvMarkdown: rawText,
-        cvStructured: cvJson,
-      },
-    })
+    if (persist) {
+      await prisma.profile.upsert({
+        where: { userId },
+        update: {
+          cvMarkdown: rawText,
+          cvStructured: cvJson,
+        },
+        create: {
+          userId,
+          cvMarkdown: rawText,
+          cvStructured: cvJson,
+        },
+      })
+    }
 
     return NextResponse.json({
       markdown: rawText,
       structured: cvStructured,
       fileName,
+      persisted: persist,
     })
   } catch (error) {
     console.error("CV upload error:", error)

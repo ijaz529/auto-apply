@@ -30,11 +30,11 @@ describe("mapPreferredModel", () => {
     expect(mapPreferredModel("sonnet")).toBe("claude-sonnet-4-6")
   })
 
-  it("defaults to opus for unknown / undefined / null", () => {
-    expect(mapPreferredModel(undefined)).toBe("claude-opus-4-7")
-    expect(mapPreferredModel(null)).toBe("claude-opus-4-7")
-    expect(mapPreferredModel("")).toBe("claude-opus-4-7")
-    expect(mapPreferredModel("haiku")).toBe("claude-opus-4-7")
+  it("defaults to sonnet for unknown / undefined / null", () => {
+    expect(mapPreferredModel(undefined)).toBe("claude-sonnet-4-6")
+    expect(mapPreferredModel(null)).toBe("claude-sonnet-4-6")
+    expect(mapPreferredModel("")).toBe("claude-sonnet-4-6")
+    expect(mapPreferredModel("haiku")).toBe("claude-sonnet-4-6")
   })
 })
 

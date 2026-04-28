@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useRef } from "react"
 import {
   Loader2,
   Upload,
@@ -11,6 +11,7 @@ import {
   Plus,
   ChevronLeft,
   ChevronRight,
+  Info,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,8 +25,17 @@ interface DiscoverJob {
   relevance?: number
 }
 
+interface ScanCv {
+  markdown: string
+  structured: unknown
+  fileName: string
+}
+
 export default function CVPage() {
-  const [hasCV, setHasCV] = useState<boolean | null>(null)
+  // CV is held in component state only — never written to the user's profile.
+  // /profile owns the primary CV; this scanner exists for one-off scans of
+  // anyone's CV (your own draft, a friend's, etc).
+  const [scanCv, setScanCv] = useState<ScanCv | null>(null)
   const [cvUploading, setCvUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [preferences, setPreferences] = useState("")
@@ -43,15 +53,6 @@ export default function CVPage() {
   const [groupBy, setGroupBy] = useState<"none" | "company" | "location">("none")
   const PAGE_SIZE = 15
 
-  useEffect(() => {
-    fetch("/api/profile")
-      .then((r) => r.ok ? r.json() : null)
-      .then((d) => {
-        if (d) setHasCV(!!d.cvMarkdown)
-      })
-      .catch(() => setHasCV(false))
-  }, [])
-
   async function handleCvUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -59,15 +60,28 @@ export default function CVPage() {
     const formData = new FormData()
     formData.append("file", file)
     try {
-      const res = await fetch("/api/cv/upload", { method: "POST", body: formData })
-      if (res.ok) setHasCV(true)
-    } catch { /* ignore */ } finally {
+      const res = await fetch("/api/cv/upload?persist=false", {
+        method: "POST",
+        body: formData,
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setScanCv({
+          markdown: data.markdown ?? "",
+          structured: data.structured ?? null,
+          fileName: data.fileName ?? file.name,
+        })
+      }
+    } catch {
+      /* ignore */
+    } finally {
       setCvUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ""
     }
   }
 
   async function handleDiscover() {
+    if (!scanCv) return
     setDiscovering(true)
     setDiscoverJobs([])
     setDiscoverMeta(null)
@@ -77,7 +91,11 @@ export default function CVPage() {
       const res = await fetch("/api/jobs/discover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ preferences: preferences || undefined }),
+        body: JSON.stringify({
+          preferences: preferences || undefined,
+          cvMarkdown: scanCv.markdown,
+          cvStructured: scanCv.structured,
+        }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -112,6 +130,16 @@ export default function CVPage() {
 
   return (
     <div className="space-y-6">
+      <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/40 border rounded-md p-3">
+        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+        <span>
+          Upload any CV here to scan 60+ portals for matching jobs — yours,
+          a friend&apos;s, or a draft. CVs uploaded on this page are{" "}
+          <strong>not saved</strong> and don&apos;t affect your primary
+          profile CV.
+        </span>
+      </div>
+
       <Input
         placeholder="Remote jobs in Berlin, salary above EUR 75k, product ops..."
         value={preferences}
@@ -121,27 +149,27 @@ export default function CVPage() {
 
       <div className="flex items-center gap-3 flex-wrap">
         <input ref={fileInputRef} type="file" accept=".pdf,.docx,.doc,.txt,.md" className="hidden" onChange={handleCvUpload} />
-        {hasCV ? (
+        {scanCv ? (
           <>
             <div className="flex items-center gap-1.5 text-sm text-green-700">
               <CheckCircle2 className="h-4 w-4" />
-              CV uploaded
+              CV ready ({scanCv.fileName})
             </div>
             <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
               {cvUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-1.5 h-3.5 w-3.5" />}
-              Re-upload
+              Replace
             </Button>
             <Button size="sm" onClick={handleDiscover} disabled={discovering}>
               {discovering
                 ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Scanning 60+ portals...</>
-                : <><Search className="mr-1.5 h-3.5 w-3.5" /> Find Jobs for My CV</>
+                : <><Search className="mr-1.5 h-3.5 w-3.5" /> Find Jobs for This CV</>
               }
             </Button>
           </>
         ) : (
           <Button onClick={() => fileInputRef.current?.click()} disabled={cvUploading}>
             {cvUploading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Upload className="mr-1.5 h-4 w-4" />}
-            Upload CV
+            Upload CV to scan
           </Button>
         )}
       </div>

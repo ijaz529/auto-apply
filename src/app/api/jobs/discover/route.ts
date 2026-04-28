@@ -320,33 +320,50 @@ export async function POST(req: NextRequest) {
     const userId = await getUserId()
 
     const body = await req.json().catch(() => ({}))
-    const { preferences } = body as { preferences?: string }
-
-    // Load profile with structured CV
-    const profile = await prisma.profile.findUnique({
-      where: { userId },
-    })
-
-    if (!profile?.cvStructured) {
-      return NextResponse.json(
-        { error: "No CV found. Upload your CV first." },
-        { status: 400 }
-      )
+    const {
+      preferences,
+      cvStructured: bodyCvStructured,
+      cvMarkdown: bodyCvMarkdown,
+    } = body as {
+      preferences?: string
+      cvStructured?: unknown
+      cvMarkdown?: string
     }
 
-    const cv = profile.cvStructured as unknown as CVData
+    // /cv "scan any CV" supplies its CV in the request body; the rest of the
+    // app falls back to the user's persisted profile CV.
+    let cv: CVData | null = null
+    let signalLocation: string | null = null
+    let rawMarkdown: string | null = null
+
+    if (bodyCvStructured && typeof bodyCvStructured === "object") {
+      cv = bodyCvStructured as CVData
+      rawMarkdown = bodyCvMarkdown ?? null
+    } else {
+      const profile = await prisma.profile.findUnique({ where: { userId } })
+      if (!profile?.cvStructured) {
+        return NextResponse.json(
+          { error: "No CV found. Upload your CV first." },
+          { status: 400 }
+        )
+      }
+      cv = profile.cvStructured as unknown as CVData
+      signalLocation = profile.location
+      rawMarkdown = profile.cvMarkdown
+    }
+
     if (!cv || typeof cv !== "object") {
       return NextResponse.json(
-        { error: "CV data is malformed. Try re-uploading your CV." },
+        { error: "CV data is malformed. Try re-uploading the CV." },
         { status: 400 }
       )
     }
 
-    const signals = extractCVSignals(cv, profile.location)
+    const signals = extractCVSignals(cv, signalLocation)
 
     // If CV structured data yielded no domains, scan raw CV markdown for keywords
-    if (signals.domains.length === 0 && profile.cvMarkdown) {
-      const rawLower = profile.cvMarkdown.toLowerCase()
+    if (signals.domains.length === 0 && rawMarkdown) {
+      const rawLower = rawMarkdown.toLowerCase()
       for (const [keyword, titleTerms] of Object.entries(DOMAIN_TO_TITLE)) {
         if (rawLower.includes(keyword)) {
           for (const term of titleTerms) {
