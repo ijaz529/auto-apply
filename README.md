@@ -1,36 +1,32 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AutoApply
 
-## Getting Started
+AI-powered job application automation. Personal SaaS scratching my own itch: scrape postings from multiple ATS portals, score fit against my CV, generate tailored applications with Claude or Gemini, and track everything in one place.
 
-First, run the development server:
+## Why this exists
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Job hunting with 9 years of experience means filtering 100+ postings per week to find the 5 worth applying to with a tailored CV. Manual filtering = burnout. Existing tools are either spammy auto-submitters or single-feature point solutions. AutoApply is the system I want: high-fit filter → AI-tailored CV → human approves before submit.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Stack
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Framework:** Next.js 16 (App Router) + React 19 + TypeScript
+- **Multi-LLM:** Anthropic Claude SDK + Google Gemini (model choice per task type)
+- **Auth:** NextAuth v5 with Prisma adapter
+- **Database:** Prisma + Postgres
+- **Background jobs:** BullMQ + Redis (separate `worker.ts` process for scraping and LLM calls)
+- **Document parsing:** pdf-parse + mammoth (PDF + DOCX CV uploads)
+- **UI:** shadcn/ui + Base UI + Tailwind + Lucide
+- **Validation:** Zod
+- **Tests:** Vitest
+- **Deploy:** Docker + Railway
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Repo layout
 
-## Learn More
+- `src/app/` — Next.js app routes (UI + API)
+- `src/lib`, `src/hooks`, `src/components`, `src/types/` — shared logic, UI, types
+- `prisma/` — schema and migrations
+- `templates/` — document and CV templates
+- `worker.ts` — BullMQ worker for background scraping and LLM jobs
 
-To learn more about Next.js, take a look at the following resources:
+## Status
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Active development; personal product, not yet open for signups. Building in public — expect rough edges.
